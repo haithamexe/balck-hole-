@@ -2,7 +2,7 @@ const DEFAULT_FONT_SIZE = 18;
 const DEFAULT_LINE_HEIGHT = 28;
 const DEFAULT_FONT = `${DEFAULT_FONT_SIZE}px "Noto Naskh Arabic", "Amiri", "Noto Sans Arabic", "Segoe UI", serif`;
 const DEFAULT_PADDING = 72;
-const DEFAULT_MAX_DPR = 1.5;
+const DEFAULT_MAX_DPR = 1.1;
 
 const DEFAULT_EVENT_HORIZON = 78;
 const DEFAULT_GRAVITY_RADIUS = 280;
@@ -31,11 +31,11 @@ const DEFAULT_ACCRETION_COLORS = [
   [255, 220, 185],
 ];
 
-const DEFAULT_STAR_COUNT = 260;
-const DEFAULT_NEBULA_LAYERS = 4;
-const DEFAULT_ACCRETION_PARTICLE_COUNT = 120;
-const DEFAULT_ACCRETION_TRAIL_STEPS = 3;
-const DEFAULT_MAX_HAWKING_PARTICLES = 18;
+const DEFAULT_STAR_COUNT = 180;
+const DEFAULT_NEBULA_LAYERS = 3;
+const DEFAULT_ACCRETION_PARTICLE_COUNT = 84;
+const DEFAULT_ACCRETION_TRAIL_STEPS = 2;
+const DEFAULT_MAX_HAWKING_PARTICLES = 12;
 
 const DEFAULT_TEXT_CONTENT = `الرحمن الرحيم الملك القدوس السلام المؤمن المهيمن العزيز الجبار المتكبر الخالق البارئ المصور الغفار القهار الوهاب الرزاق الفتاح العليم القابض الباسط الخافض الرافع المعز المذل السميع البصير الحكم العدل اللطيف الخبير الحليم العظيم الغفور الشكور العلي الكبير الحفيظ المقيت الحسيب الجليل الكريم الرقيب المجيب الواسع الحكيم الودود المجيد الباعث الشهيد الحق الوكيل القوي المتين الولي الحميد المحصي المبدئ المعيد المحيي المميت الحي القيوم الواجد الماجد الواحد الصمد القادر المقتدر المقدم المؤخر الأول الآخر الظاهر الباطن الوالي المتعالي البر التواب المنتقم العفو الرؤوف مالك الملك ذو الجلال والإكرام المقسط الجامع الغني المغني المانع الضار النافع النور الهادي البديع الباقي الوارث الرشيد الصبور`;
 
@@ -424,11 +424,12 @@ export function mountPretextBlackHole(canvas, options = {}) {
 
   let mouse = { x: 0, y: 0, active: false };
   let chars = [];
+  let wordEntries = [];
   let stars = [];
   let accretionParticles = [];
   let hawkingParticles = [];
-  let backgroundLayerCanvas = null;
-  let vignetteLayerCanvas = null;
+  let nebulaGradients = [];
+  let vignetteGradient = null;
   const hole = { x: 0, y: 0 };
   const holeVelocity = { x: 0, y: 0 };
 
@@ -454,6 +455,11 @@ export function mountPretextBlackHole(canvas, options = {}) {
     }
   }
 
+  function configureWordContext(targetCtx = ctx) {
+    configureTextContext(targetCtx);
+    targetCtx.textAlign = "right";
+  }
+
   function getEffectiveDpr(width, height) {
     const capped = Math.min(window.devicePixelRatio || 1, MAX_DPR);
     const area = width * height;
@@ -467,24 +473,10 @@ export function mountPretextBlackHole(canvas, options = {}) {
   function getDensityScale() {
     const area = W * H;
 
-    if (area > 1_500_000) return 0.68;
-    if (area > 1_100_000) return 0.78;
-    if (area > 800_000) return 0.88;
+    if (area > 1_500_000) return 0.56;
+    if (area > 1_100_000) return 0.68;
+    if (area > 800_000) return 0.82;
     return 1;
-  }
-
-  function createBufferCanvas(width, height) {
-    const bufferCanvas = document.createElement("canvas");
-    bufferCanvas.width = Math.max(1, Math.round(width * dpr));
-    bufferCanvas.height = Math.max(1, Math.round(height * dpr));
-    const bufferCtx = bufferCanvas.getContext("2d");
-
-    if (bufferCtx === null) {
-      return null;
-    }
-
-    bufferCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    return { canvas: bufferCanvas, ctx: bufferCtx };
   }
 
   function updateHoleCenter() {
@@ -607,7 +599,10 @@ export function mountPretextBlackHole(canvas, options = {}) {
     accretionParticles.sort((a, b) => a.z - b.z);
   }
 
-  function pushWordCharacters(wordLayout, cursorX, baseY) {
+  function pushWordCharacters(wordLayout, cursorX, baseY, sourceWord) {
+    const wordRightX = cursorX;
+    const charStart = chars.length;
+
     for (let i = 0; i < wordLayout.units.length; i++) {
       const unit = wordLayout.units[i];
       const x = cursorX - unit.width;
@@ -636,11 +631,26 @@ export function mountPretextBlackHole(canvas, options = {}) {
       }
     }
 
+    const wordLeftX = cursorX;
+    const wordWidth = wordRightX - wordLeftX;
+    wordEntries.push({
+      text: sourceWord,
+      baseY,
+      centerY: baseY + LINE_HEIGHT / 2,
+      rightX: wordRightX,
+      centerX: wordLeftX + wordWidth / 2,
+      width: wordWidth,
+      charStart,
+      charEnd: chars.length,
+      active: false,
+    });
+
     return cursorX;
   }
 
   function buildLayout() {
     chars = [];
+    wordEntries = [];
 
     if (words.length === 0) return;
 
@@ -661,7 +671,8 @@ export function mountPretextBlackHole(canvas, options = {}) {
       let safety = 0;
 
       while (safety < words.length * 2) {
-        const wordLayout = getWordLayout(words[wordIndex % words.length]);
+        const sourceWord = words[wordIndex % words.length];
+        const wordLayout = getWordLayout(sourceWord);
         const nextWidth =
           lineWords.length === 0
             ? wordLayout.width
@@ -671,7 +682,10 @@ export function mountPretextBlackHole(canvas, options = {}) {
           break;
         }
 
-        lineWords.push(wordLayout);
+        lineWords.push({
+          text: sourceWord,
+          layout: wordLayout,
+        });
         lineWidth = nextWidth;
         wordIndex++;
         safety++;
@@ -702,7 +716,12 @@ export function mountPretextBlackHole(canvas, options = {}) {
       let cursorX = PADDING + (maxWidth + line.width) / 2;
 
       for (let j = 0; j < line.words.length; j++) {
-        cursorX = pushWordCharacters(line.words[j], cursorX, baseY);
+        cursorX = pushWordCharacters(
+          line.words[j].layout,
+          cursorX,
+          baseY,
+          line.words[j].text,
+        );
         if (j < line.words.length - 1) {
           cursorX -= spaceWidth;
         }
@@ -728,8 +747,7 @@ export function mountPretextBlackHole(canvas, options = {}) {
     initStars();
     initAccretion();
     buildLayout();
-    rebuildBackgroundLayer();
-    rebuildVignetteLayer();
+    rebuildStaticGradients();
   }
 
   function warpChar(char, effectStrength) {
@@ -873,14 +891,16 @@ export function mountPretextBlackHole(canvas, options = {}) {
     }
   }
 
-  function drawNebula(targetCtx = ctx) {
+  function rebuildStaticGradients() {
+    nebulaGradients = [];
+    const hues = [258, 214, 304];
+
     for (let i = 0; i < NEBULA_LAYERS; i++) {
-      const centerX = W * (0.2 + i * 0.2);
+      const centerX = W * (0.24 + i * 0.22);
       const centerY = H * (0.28 + (i % 2) * 0.42);
       const radius = W * (0.22 + i * 0.05);
-      const hue = [258, 214, 304, 196][i];
-
-      const gradient = targetCtx.createRadialGradient(
+      const hue = hues[i % hues.length];
+      const gradient = ctx.createRadialGradient(
         centerX,
         centerY,
         0,
@@ -891,13 +911,10 @@ export function mountPretextBlackHole(canvas, options = {}) {
       gradient.addColorStop(0, `hsla(${hue}, 60%, 16%, 0.045)`);
       gradient.addColorStop(0.55, `hsla(${hue}, 38%, 10%, 0.022)`);
       gradient.addColorStop(1, "hsla(0, 0%, 0%, 0)");
-      targetCtx.fillStyle = gradient;
-      targetCtx.fillRect(0, 0, W, H);
+      nebulaGradients.push(gradient);
     }
-  }
 
-  function drawVignette(targetCtx = ctx) {
-    const vignette = targetCtx.createRadialGradient(
+    vignetteGradient = ctx.createRadialGradient(
       W / 2,
       H / 2,
       W * 0.24,
@@ -905,36 +922,108 @@ export function mountPretextBlackHole(canvas, options = {}) {
       H / 2,
       W * 0.76,
     );
-    vignette.addColorStop(0, "rgba(2, 1, 8, 0)");
-    vignette.addColorStop(1, "rgba(2, 1, 8, 0.72)");
-    targetCtx.fillStyle = vignette;
-    targetCtx.fillRect(0, 0, W, H);
+    vignetteGradient.addColorStop(0, "rgba(2, 1, 8, 0)");
+    vignetteGradient.addColorStop(1, "rgba(2, 1, 8, 0.72)");
   }
 
-  function rebuildBackgroundLayer() {
-    const buffer = createBufferCanvas(W, H);
+  function drawNebula() {
+    for (let i = 0; i < nebulaGradients.length; i++) {
+      ctx.fillStyle = nebulaGradients[i];
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
 
-    if (buffer === null) {
-      backgroundLayerCanvas = null;
+  function drawVignette() {
+    if (vignetteGradient === null) {
       return;
     }
 
-    backgroundLayerCanvas = buffer.canvas;
-    buffer.ctx.fillStyle = BG_COLOR;
-    buffer.ctx.fillRect(0, 0, W, H);
-    drawNebula(buffer.ctx);
+    ctx.fillStyle = vignetteGradient;
+    ctx.fillRect(0, 0, W, H);
   }
 
-  function rebuildVignetteLayer() {
-    const buffer = createBufferCanvas(W, H);
+  function getDistanceT(distToHole) {
+    return 1 - clamp(distToHole / (GRAVITY_RADIUS * 1.04), 0, 1);
+  }
 
-    if (buffer === null) {
-      vignetteLayerCanvas = null;
+  function getGrayFromDistance(distToHole) {
+    const distanceT = getDistanceT(distToHole);
+    return Math.round(54 + Math.pow(distanceT, 1.35) * 196);
+  }
+
+  function getAlphaFromDistance(distToHole, absorbProgress = 0) {
+    const distanceT = getDistanceT(distToHole);
+    return Math.max(0.34, 0.52 + distanceT * 0.34 - absorbProgress * 0.3);
+  }
+
+  function resetWordChars(wordEntry) {
+    for (let i = wordEntry.charStart; i < wordEntry.charEnd; i++) {
+      const char = chars[i];
+      char.x = char.baseX;
+      char.y = char.baseY;
+      char.vx = 0;
+      char.vy = 0;
+      char.absorbed = false;
+      char.absorbProgress = 0;
+      char.fieldInfluence = 0;
+      char.stretch = 1;
+      char.rotation = 0;
+    }
+  }
+
+  function isWordSettled(wordEntry) {
+    for (let i = wordEntry.charStart; i < wordEntry.charEnd; i++) {
+      const char = chars[i];
+      if (
+        char.absorbProgress > 0.01 ||
+        Math.abs(char.vx) > 0.03 ||
+        Math.abs(char.vy) > 0.03 ||
+        Math.abs(char.x - char.baseX) > 0.35 ||
+        Math.abs(char.y - char.baseY) > 0.35
+      ) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  function updateWordActivity(wordEntry) {
+    const dx = wordEntry.centerX - hole.x;
+    const dy = wordEntry.centerY - hole.y;
+    const distSq = dx * dx + dy * dy;
+    const activateRadius = GRAVITY_RADIUS * 0.98;
+    const retainRadius = GRAVITY_RADIUS * 1.2;
+
+    if (distSq < activateRadius * activateRadius) {
+      wordEntry.active = true;
       return;
     }
 
-    vignetteLayerCanvas = buffer.canvas;
-    drawVignette(buffer.ctx);
+    if (!wordEntry.active) {
+      return;
+    }
+
+    if (distSq < retainRadius * retainRadius) {
+      return;
+    }
+
+    if (isWordSettled(wordEntry)) {
+      wordEntry.active = false;
+      resetWordChars(wordEntry);
+    }
+  }
+
+  function drawStaticWord(wordEntry, textFade) {
+    const dx = wordEntry.centerX - hole.x;
+    const dy = wordEntry.centerY - hole.y;
+    const distToHole = Math.sqrt(dx * dx + dy * dy);
+    const gray = getGrayFromDistance(distToHole);
+    const alpha = getAlphaFromDistance(distToHole) * textFade;
+
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = `rgb(${gray}, ${gray}, ${gray})`;
+    ctx.fillText(wordEntry.text, wordEntry.rightX, wordEntry.baseY);
   }
 
   function drawLensingRing(opacity) {
@@ -1220,85 +1309,97 @@ export function mountPretextBlackHole(canvas, options = {}) {
     holeVelocity.x = hole.x - previousHoleX;
     holeVelocity.y = hole.y - previousHoleY;
 
-    if (backgroundLayerCanvas !== null) {
-      ctx.drawImage(backgroundLayerCanvas, 0, 0, W, H);
-    } else {
-      ctx.fillStyle = BG_COLOR;
-      ctx.fillRect(0, 0, W, H);
-      drawNebula();
-    }
+    ctx.fillStyle = BG_COLOR;
+    ctx.fillRect(0, 0, W, H);
+    drawNebula();
 
     drawStars(effectStrength);
     drawLensingRing(holeFade * effectStrength);
 
+    for (let i = 0; i < wordEntries.length; i++) {
+      updateWordActivity(wordEntries[i]);
+    }
+
+    configureWordContext();
+    for (let i = 0; i < wordEntries.length; i++) {
+      const wordEntry = wordEntries[i];
+      if (!wordEntry.active) {
+        drawStaticWord(wordEntry, textFade);
+      }
+    }
+
     configureTextContext();
 
-    for (let i = 0; i < chars.length; i++) {
-      const char = chars[i];
-
-      warpChar(char, effectStrength);
-      const spring = 0.04 * (1 - char.fieldInfluence * 0.75);
-      char.vx += (char.baseX - char.x) * spring;
-      char.vy += (char.baseY - char.y) * spring;
-      const damping = 0.9 + char.fieldInfluence * 0.045;
-      char.vx *= damping;
-      char.vy *= damping;
-      char.x += char.vx;
-      char.y += char.vy;
-
-      if (char.absorbProgress >= 1) {
+    for (let wordIndex = 0; wordIndex < wordEntries.length; wordIndex++) {
+      const wordEntry = wordEntries[wordIndex];
+      if (!wordEntry.active) {
         continue;
       }
 
-      const displacement = Math.sqrt(
-        (char.x - char.baseX) ** 2 + (char.y - char.baseY) ** 2,
-      );
-      const charCenterX = char.x + char.width / 2;
-      const charCenterY = char.y + LINE_HEIGHT / 2;
-      const distToHole = Math.sqrt(
-        (charCenterX - hole.x) ** 2 + (charCenterY - hole.y) ** 2,
-      );
+      for (let i = wordEntry.charStart; i < wordEntry.charEnd; i++) {
+        const char = chars[i];
 
-      const distanceT = 1 - clamp(distToHole / (GRAVITY_RADIUS * 1.04), 0, 1);
-      const gray = Math.round(54 + Math.pow(distanceT, 1.35) * 196);
-      const alpha = Math.max(
-        0.34,
-        0.52 + distanceT * 0.34 - char.absorbProgress * 0.3,
-      );
-      const r = gray;
-      const g = gray;
-      const b = gray;
+        warpChar(char, effectStrength);
+        const spring = 0.04 * (1 - char.fieldInfluence * 0.75);
+        char.vx += (char.baseX - char.x) * spring;
+        char.vy += (char.baseY - char.y) * spring;
+        const damping = 0.9 + char.fieldInfluence * 0.045;
+        char.vx *= damping;
+        char.vy *= damping;
+        char.x += char.vx;
+        char.y += char.vy;
 
-      const finalAlpha = alpha * (1 - char.absorbProgress) * textFade;
-      const needsTransform = char.stretch > 1.03;
-      const needsGlow = displacement > 8 && distToHole < GRAVITY_RADIUS * 0.62;
-      const fillStyle = `rgb(${r}, ${g}, ${b})`;
+        if (char.absorbProgress >= 1) {
+          continue;
+        }
 
-      if (!needsTransform && !needsGlow) {
+        const displacement = Math.sqrt(
+          (char.x - char.baseX) ** 2 + (char.y - char.baseY) ** 2,
+        );
+        const charCenterX = char.x + char.width / 2;
+        const charCenterY = char.y + LINE_HEIGHT / 2;
+        const distToHole = Math.sqrt(
+          (charCenterX - hole.x) ** 2 + (charCenterY - hole.y) ** 2,
+        );
+
+        const gray = getGrayFromDistance(distToHole);
+        const alpha = getAlphaFromDistance(distToHole, char.absorbProgress);
+        const r = gray;
+        const g = gray;
+        const b = gray;
+
+        const finalAlpha = alpha * (1 - char.absorbProgress) * textFade;
+        const needsTransform = char.stretch > 1.03;
+        const needsGlow =
+          displacement > 8 && distToHole < GRAVITY_RADIUS * 0.62;
+        const fillStyle = `rgb(${r}, ${g}, ${b})`;
+
+        if (!needsTransform && !needsGlow) {
+          ctx.globalAlpha = finalAlpha;
+          ctx.fillStyle = fillStyle;
+          ctx.fillText(char.char, char.x, char.y);
+          continue;
+        }
+
+        ctx.save();
+
+        if (needsTransform) {
+          ctx.translate(charCenterX, charCenterY);
+          ctx.rotate(char.rotation);
+          ctx.scale(char.stretch, 1 / Math.sqrt(char.stretch));
+          ctx.translate(-charCenterX, -charCenterY);
+        }
+
+        if (needsGlow) {
+          ctx.shadowColor = `rgba(${r}, ${g}, ${b}, 0.4)`;
+          ctx.shadowBlur = Math.min(displacement * 0.18, 8);
+        }
+
         ctx.globalAlpha = finalAlpha;
         ctx.fillStyle = fillStyle;
         ctx.fillText(char.char, char.x, char.y);
-        continue;
+        ctx.restore();
       }
-
-      ctx.save();
-
-      if (needsTransform) {
-        ctx.translate(charCenterX, charCenterY);
-        ctx.rotate(char.rotation);
-        ctx.scale(char.stretch, 1 / Math.sqrt(char.stretch));
-        ctx.translate(-charCenterX, -charCenterY);
-      }
-
-      if (needsGlow) {
-        ctx.shadowColor = `rgba(${r}, ${g}, ${b}, 0.4)`;
-        ctx.shadowBlur = Math.min(displacement * 0.18, 8);
-      }
-
-      ctx.globalAlpha = finalAlpha;
-      ctx.fillStyle = fillStyle;
-      ctx.fillText(char.char, char.x, char.y);
-      ctx.restore();
     }
 
     ctx.globalAlpha = 1;
@@ -1307,11 +1408,7 @@ export function mountPretextBlackHole(canvas, options = {}) {
     drawAccretionDisk(holeFade);
     updateHawkingRadiation(holeFade * effectStrength);
 
-    if (vignetteLayerCanvas !== null) {
-      ctx.drawImage(vignetteLayerCanvas, 0, 0, W, H);
-    } else {
-      drawVignette();
-    }
+    drawVignette();
 
     animationFrameId = requestAnimationFrame(frame);
   }
