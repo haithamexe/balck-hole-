@@ -626,6 +626,7 @@ export function mountPretextBlackHole(canvas, options = {}) {
         fieldInfluence: 0,
         stretch: 1,
         rotation: 0,
+        orbitPhaseOffset: chars.length * 0.37,
       });
 
       cursorX = x;
@@ -754,6 +755,33 @@ export function mountPretextBlackHole(canvas, options = {}) {
       char.vy += Math.sin(tangent) * tangentialForce * 0.08;
       char.vx += holeVelocity.x * effectStrength * (0.18 + flowStrength * 0.72);
       char.vy += holeVelocity.y * effectStrength * (0.18 + flowStrength * 0.72);
+
+      const orbitCenterX = char.x + char.width / 2;
+      const orbitCenterY = char.y + LINE_HEIGHT / 2;
+      const orbitDx = orbitCenterX - hole.x;
+      const orbitDy = orbitCenterY - hole.y;
+      const orbitDist = Math.sqrt(orbitDx * orbitDx + orbitDy * orbitDy);
+      const loopStrength =
+        clamp((GRAVITY_RADIUS * 0.72 - dist) / (GRAVITY_RADIUS * 0.72), 0, 1) *
+        effectStrength;
+
+      if (loopStrength > 0.01 && orbitDist > 1) {
+        const orbitAngle = Math.atan2(orbitDy, orbitDx);
+        const orbitTangent = orbitAngle + Math.PI / 2;
+        const loopPulse =
+          0.74 + Math.sin(time * 0.9 + char.orbitPhaseOffset) * 0.26;
+        const radialPulse = Math.sin(time * 1.18 + char.orbitPhaseOffset);
+        const orbitForce =
+          GRAVITY_STRENGTH * 0.0036 * loopStrength * (0.85 + loopPulse);
+        const radialForce =
+          GRAVITY_STRENGTH * 0.0012 * loopStrength * radialPulse;
+
+        char.vx += Math.cos(orbitTangent) * orbitForce;
+        char.vy += Math.sin(orbitTangent) * orbitForce;
+        char.vx += Math.cos(orbitAngle) * radialForce;
+        char.vy += Math.sin(orbitAngle) * radialForce;
+        char.fieldInfluence = Math.max(char.fieldInfluence, loopStrength);
+      }
 
       if (dist < EVENT_HORIZON * 2.5) {
         char.stretch =
@@ -1212,8 +1240,9 @@ export function mountPretextBlackHole(canvas, options = {}) {
       const spring = 0.04 * (1 - char.fieldInfluence * 0.75);
       char.vx += (char.baseX - char.x) * spring;
       char.vy += (char.baseY - char.y) * spring;
-      char.vx *= 0.9;
-      char.vy *= 0.9;
+      const damping = 0.9 + char.fieldInfluence * 0.045;
+      char.vx *= damping;
+      char.vy *= damping;
       char.x += char.vx;
       char.y += char.vy;
 
