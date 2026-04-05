@@ -832,10 +832,10 @@ export function mountPretextBlackHole(canvas, options = {}) {
       hole.y,
       EVENT_HORIZON * 1.1,
     );
-    coreGradient.addColorStop(0, "rgba(0, 0, 0, 0.98)");
-    coreGradient.addColorStop(0.45, "rgba(2, 1, 8, 0.98)");
-    coreGradient.addColorStop(0.78, "rgba(2, 1, 8, 0.72)");
-    coreGradient.addColorStop(1, "rgba(2, 1, 8, 0)");
+    coreGradient.addColorStop(0, "rgba(255, 255, 255, 0.98)");
+    coreGradient.addColorStop(0.36, "rgba(250, 248, 255, 0.96)");
+    coreGradient.addColorStop(0.74, "rgba(228, 235, 255, 0.76)");
+    coreGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
 
     ctx.beginPath();
     ctx.arc(hole.x, hole.y, EVENT_HORIZON, 0, Math.PI * 2);
@@ -846,7 +846,7 @@ export function mountPretextBlackHole(canvas, options = {}) {
     ctx.filter = "blur(14px)";
     ctx.beginPath();
     ctx.arc(hole.x, hole.y, EVENT_HORIZON * 0.92, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(12, 10, 22, 0.78)";
+    ctx.strokeStyle = "rgba(244, 246, 255, 0.84)";
     ctx.lineWidth = EVENT_HORIZON * 0.32;
     ctx.stroke();
     ctx.restore();
@@ -859,10 +859,10 @@ export function mountPretextBlackHole(canvas, options = {}) {
       hole.y,
       EVENT_HORIZON * 1.36,
     );
-    featherGradient.addColorStop(0, "rgba(0, 0, 0, 0)");
-    featherGradient.addColorStop(0.62, "rgba(8, 6, 18, 0.18)");
-    featherGradient.addColorStop(0.82, "rgba(18, 14, 30, 0.38)");
-    featherGradient.addColorStop(1, "rgba(2, 1, 8, 0)");
+    featherGradient.addColorStop(0, "rgba(255, 255, 255, 0)");
+    featherGradient.addColorStop(0.58, "rgba(228, 235, 255, 0.2)");
+    featherGradient.addColorStop(0.82, "rgba(245, 248, 255, 0.42)");
+    featherGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
 
     ctx.fillStyle = featherGradient;
     ctx.fillRect(
@@ -876,9 +876,9 @@ export function mountPretextBlackHole(canvas, options = {}) {
   function drawCenterWord() {
     ctx.save();
     configureCenterWordContext();
-    ctx.shadowColor = "rgba(255, 245, 225, 0.38)";
-    ctx.shadowBlur = EVENT_HORIZON * 0.42;
-    ctx.fillStyle = "rgba(248, 241, 229, 0.92)";
+    ctx.shadowColor = "rgba(255, 255, 255, 0.16)";
+    ctx.shadowBlur = EVENT_HORIZON * 0.16;
+    ctx.fillStyle = "rgba(24, 28, 42, 0.82)";
     ctx.fillText(HOLE_WORD, hole.x, hole.y + EVENT_HORIZON * 0.04);
     ctx.restore();
   }
