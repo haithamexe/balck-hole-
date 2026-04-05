@@ -1,81 +1,375 @@
-import { prepareWithSegments, layoutWithLines } from "@chenglou/pretext";
-
-// ── Config ──
-const DEFAULT_FONT_SIZE = 15;
-const DEFAULT_LINE_HEIGHT = 16;
-const DEFAULT_FONT = `${DEFAULT_FONT_SIZE}px "Georgia", "Noto Serif KR", serif`;
-const DEFAULT_PADDING = 60;
+const DEFAULT_FONT_SIZE = 18;
+const DEFAULT_LINE_HEIGHT = 28;
+const DEFAULT_FONT = `${DEFAULT_FONT_SIZE}px "Noto Naskh Arabic", "Amiri", "Noto Sans Arabic", "Segoe UI", serif`;
+const DEFAULT_PADDING = 72;
 const DEFAULT_MAX_DPR = 1.5;
 
-// Black hole config
-const DEFAULT_EVENT_HORIZON = 20; // inner void radius
-const DEFAULT_GRAVITY_RADIUS = 280; // how far gravity reaches
-const DEFAULT_GRAVITY_STRENGTH = 150; // pull force
-const DEFAULT_WARP_STRENGTH = 0.2; // how much text bends tangentially
-const DEFAULT_SWALLOW_RADIUS = 50; // chars inside this vanish
+const DEFAULT_EVENT_HORIZON = 78;
+const DEFAULT_GRAVITY_RADIUS = 280;
+const DEFAULT_GRAVITY_STRENGTH = 150;
+const DEFAULT_WARP_STRENGTH = 0.2;
+const DEFAULT_SWALLOW_RADIUS = 88;
+const DEFAULT_HOLE_FOLLOW = 0.08;
+const HOLE_WORD = "\u0627\u0644\u0644\u0647";
 
-// Colors
 const DEFAULT_BACKGROUND_COLOR = "#020108";
-const DEFAULT_CHAR_COLOR = [90, 80, 110]; // dim purple-grey
-const DEFAULT_CHAR_GLOW_COLOR = [180, 140, 255]; // bright purple when warped
+const DEFAULT_CHAR_COLOR = [92, 86, 112];
+const DEFAULT_CHAR_GLOW_COLOR = [208, 190, 255];
 const DEFAULT_ACCRETION_COLORS = [
-  [255, 180, 60], // gold
-  [255, 120, 40], // orange
-  [200, 100, 255], // purple
-  [100, 160, 255], // blue
-  [255, 200, 150], // warm white
+  [255, 184, 68],
+  [255, 122, 56],
+  [210, 110, 255],
+  [110, 170, 255],
+  [255, 220, 185],
 ];
 
-// Star config
-const DEFAULT_STAR_COUNT = 300;
+const DEFAULT_STAR_COUNT = 260;
 const DEFAULT_NEBULA_LAYERS = 4;
 
-// ── Text content ──
-const DEFAULT_TEXT_CONTENT = `In the beginning God created the heaven and the earth. And the earth was without form, and void; and darkness was upon the face of the deep. And the Spirit of God moved upon the face of the waters. And God said, Let there be light: and there was light. And God saw the light, that it was good: and God divided the light from the darkness.
+const DEFAULT_TEXT_CONTENT = `الرحمن الرحيم الملك القدوس السلام المؤمن المهيمن العزيز الجبار المتكبر الخالق البارئ المصور الغفار القهار الوهاب الرزاق الفتاح العليم القابض الباسط الخافض الرافع المعز المذل السميع البصير الحكم العدل اللطيف الخبير الحليم العظيم الغفور الشكور العلي الكبير الحفيظ المقيت الحسيب الجليل الكريم الرقيب المجيب الواسع الحكيم الودود المجيد الباعث الشهيد الحق الوكيل القوي المتين الولي الحميد المحصي المبدئ المعيد المحيي المميت الحي القيوم الواجد الماجد الواحد الصمد القادر المقتدر المقدم المؤخر الأول الآخر الظاهر الباطن الوالي المتعالي البر التواب المنتقم العفو الرؤوف مالك الملك ذو الجلال والإكرام المقسط الجامع الغني المغني المانع الضار النافع النور الهادي البديع الباقي الوارث الرشيد الصبور`;
 
-Call me Ishmael. Some years ago — never mind how long precisely — having little or no money in my purse, and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world. It is a way I have of driving off the spleen and regulating the circulation. Whenever I find myself growing grim about the mouth; whenever it is a damp, drizzly November in my soul; whenever I find myself involuntarily pausing before coffin warehouses, and bringing up the rear of every funeral I meet; and especially whenever my hypos get such an upper hand of me, that it requires a strong moral principle to prevent me from deliberately stepping into the street, and methodically knocking people's hats off — then, I account it high time to get to sea as soon as I can.
+const ARABIC_SEGMENTER =
+  typeof Intl !== "undefined" && typeof Intl.Segmenter === "function"
+    ? new Intl.Segmenter("ar", { granularity: "grapheme" })
+    : null;
 
-It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness, it was the spring of hope, it was the winter of despair, we had everything before us, we had nothing before us, we were all going direct to Heaven, we were all going direct the other way.
+const ARABIC_FORM_MAP = {
+  "\u0622": {
+    isolated: "\uFE81",
+    final: "\uFE82",
+    canConnectPrev: true,
+    canConnectNext: false,
+  },
+  "\u0623": {
+    isolated: "\uFE83",
+    final: "\uFE84",
+    canConnectPrev: true,
+    canConnectNext: false,
+  },
+  "\u0624": {
+    isolated: "\uFE85",
+    final: "\uFE86",
+    canConnectPrev: true,
+    canConnectNext: false,
+  },
+  "\u0625": {
+    isolated: "\uFE87",
+    final: "\uFE88",
+    canConnectPrev: true,
+    canConnectNext: false,
+  },
+  "\u0626": {
+    isolated: "\uFE89",
+    final: "\uFE8A",
+    initial: "\uFE8B",
+    medial: "\uFE8C",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u0627": {
+    isolated: "\uFE8D",
+    final: "\uFE8E",
+    canConnectPrev: true,
+    canConnectNext: false,
+  },
+  "\u0628": {
+    isolated: "\uFE8F",
+    final: "\uFE90",
+    initial: "\uFE91",
+    medial: "\uFE92",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u0629": {
+    isolated: "\uFE93",
+    final: "\uFE94",
+    canConnectPrev: true,
+    canConnectNext: false,
+  },
+  "\u062A": {
+    isolated: "\uFE95",
+    final: "\uFE96",
+    initial: "\uFE97",
+    medial: "\uFE98",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u062B": {
+    isolated: "\uFE99",
+    final: "\uFE9A",
+    initial: "\uFE9B",
+    medial: "\uFE9C",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u062C": {
+    isolated: "\uFE9D",
+    final: "\uFE9E",
+    initial: "\uFE9F",
+    medial: "\uFEA0",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u062D": {
+    isolated: "\uFEA1",
+    final: "\uFEA2",
+    initial: "\uFEA3",
+    medial: "\uFEA4",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u062E": {
+    isolated: "\uFEA5",
+    final: "\uFEA6",
+    initial: "\uFEA7",
+    medial: "\uFEA8",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u062F": {
+    isolated: "\uFEA9",
+    final: "\uFEAA",
+    canConnectPrev: true,
+    canConnectNext: false,
+  },
+  "\u0630": {
+    isolated: "\uFEAB",
+    final: "\uFEAC",
+    canConnectPrev: true,
+    canConnectNext: false,
+  },
+  "\u0631": {
+    isolated: "\uFEAD",
+    final: "\uFEAE",
+    canConnectPrev: true,
+    canConnectNext: false,
+  },
+  "\u0632": {
+    isolated: "\uFEAF",
+    final: "\uFEB0",
+    canConnectPrev: true,
+    canConnectNext: false,
+  },
+  "\u0633": {
+    isolated: "\uFEB1",
+    final: "\uFEB2",
+    initial: "\uFEB3",
+    medial: "\uFEB4",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u0634": {
+    isolated: "\uFEB5",
+    final: "\uFEB6",
+    initial: "\uFEB7",
+    medial: "\uFEB8",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u0635": {
+    isolated: "\uFEB9",
+    final: "\uFEBA",
+    initial: "\uFEBB",
+    medial: "\uFEBC",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u0636": {
+    isolated: "\uFEBD",
+    final: "\uFEBE",
+    initial: "\uFEBF",
+    medial: "\uFEC0",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u0637": {
+    isolated: "\uFEC1",
+    final: "\uFEC2",
+    initial: "\uFEC3",
+    medial: "\uFEC4",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u0638": {
+    isolated: "\uFEC5",
+    final: "\uFEC6",
+    initial: "\uFEC7",
+    medial: "\uFEC8",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u0639": {
+    isolated: "\uFEC9",
+    final: "\uFECA",
+    initial: "\uFECB",
+    medial: "\uFECC",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u063A": {
+    isolated: "\uFECD",
+    final: "\uFECE",
+    initial: "\uFECF",
+    medial: "\uFED0",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u0641": {
+    isolated: "\uFED1",
+    final: "\uFED2",
+    initial: "\uFED3",
+    medial: "\uFED4",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u0642": {
+    isolated: "\uFED5",
+    final: "\uFED6",
+    initial: "\uFED7",
+    medial: "\uFED8",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u0643": {
+    isolated: "\uFED9",
+    final: "\uFEDA",
+    initial: "\uFEDB",
+    medial: "\uFEDC",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u0644": {
+    isolated: "\uFEDD",
+    final: "\uFEDE",
+    initial: "\uFEDF",
+    medial: "\uFEE0",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u0645": {
+    isolated: "\uFEE1",
+    final: "\uFEE2",
+    initial: "\uFEE3",
+    medial: "\uFEE4",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u0646": {
+    isolated: "\uFEE5",
+    final: "\uFEE6",
+    initial: "\uFEE7",
+    medial: "\uFEE8",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u0647": {
+    isolated: "\uFEE9",
+    final: "\uFEEA",
+    initial: "\uFEEB",
+    medial: "\uFEEC",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+  "\u0648": {
+    isolated: "\uFEED",
+    final: "\uFEEE",
+    canConnectPrev: true,
+    canConnectNext: false,
+  },
+  "\u0649": {
+    isolated: "\uFEEF",
+    final: "\uFEF0",
+    canConnectPrev: true,
+    canConnectNext: false,
+  },
+  "\u064A": {
+    isolated: "\uFEF1",
+    final: "\uFEF2",
+    initial: "\uFEF3",
+    medial: "\uFEF4",
+    canConnectPrev: true,
+    canConnectNext: true,
+  },
+};
 
-In my younger and more vulnerable years my father gave me some advice that I have been turning over in my mind ever since. Whenever you feel like criticizing anyone, he told me, just remember that all the people in this world have not had the advantages that you have had.
+const DEFAULT_WORDS = getTextWords(DEFAULT_TEXT_CONTENT);
 
-Happy families are all alike; every unhappy family is unhappy in its own way. Everything was in confusion in the Oblonskys' house. The wife had discovered that the husband was carrying on an intrigue with a French girl, who had been a governess in their family, and she had announced to her husband that she could not go on living in the same house with him.
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
 
-It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife. However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered as the rightful property of some one or other of their daughters.
+function normalizeTextContent(text) {
+  return `${text ?? ""}`
+    .replace(/[,\u060C]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-All children, except one, grow up. They soon know that they will grow up, and the way Wendy knew was this. One day when she was two years old she was playing in a garden, and she plucked another flower and ran with it to her mother. I suppose she must have looked rather delightful, for Mrs. Darling put her hand to her heart and cried, Oh, why can't you remain like this for ever!
+function getTextWords(text) {
+  const normalized = normalizeTextContent(text);
+  return normalized ? normalized.split(" ") : [];
+}
 
-Far out in the uncharted backwaters of the unfashionable end of the Western Spiral arm of the Galaxy lies a small unregarded yellow sun. Orbiting this at a distance of roughly ninety-two million miles is an utterly insignificant little blue-green planet whose ape-descended life forms are so amazingly primitive that they still think digital watches are a pretty neat idea.
+function splitGraphemes(text) {
+  if (ARABIC_SEGMENTER !== null) {
+    return Array.from(
+      ARABIC_SEGMENTER.segment(text),
+      (segment) => segment.segment,
+    );
+  }
 
-The studio was filled with the rich odour of roses, and when the light summer wind stirred amidst the trees of the garden, there came through the open door the heavy scent of the lilac, or the more delicate perfume of the pink-flowering thorn. From the corner of the divan of Persian saddle-bags on which he was lying, smoking, as was his custom, innumerable cigarettes, Lord Henry Wotton could just catch the gleam of the honey-sweet and honey-coloured blossoms of a laburnum.
+  return Array.from(text);
+}
 
-Whether I shall turn out to be the hero of my own life, or whether that station will be held by anybody else, these pages must show. To begin my life with the beginning of my life, I record that I was born on a Friday, at twelve o'clock at night. It was remarked that the clock began to strike, and I began to cry, simultaneously.
+function shapeArabicWord(word) {
+  const units = splitGraphemes(word);
 
-母は、朝から夜まで家の中のあらゆるものを磨いていた。窓ガラスから銀のスプーンまで、そしてその合間にも世界のあらゆる不思議について語ってくれた。彼女の言葉は水のように流れ、私の心の土壌に染み込んでいった。 rich odour of roses, and when the light summer wind stirred amidst the trees of the garden, there came through the open door the heavy scent of the lilac, or the more delicate perfume of the pink-flowering thorn. From the corner of the divan of Persian saddle-bags on which he was lying, smoking, as was his custom, innumerable cigarettes, Lord Henry Wotton could just catch the gleam of the honey-sweet and honey-coloured blossoms of a laburnum.
+  return units.map((source, index) => {
+    const current = ARABIC_FORM_MAP[source] ?? null;
+    const previous =
+      index > 0 ? (ARABIC_FORM_MAP[units[index - 1]] ?? null) : null;
+    const next =
+      index < units.length - 1
+        ? (ARABIC_FORM_MAP[units[index + 1]] ?? null)
+        : null;
 
-Whether I shall turn out to be the hero of my own life, or whether that station will be held by anybody else, these pages must show. To begin my life with the beginning of my life, I record that I was born on a Friday, at twelve o'clock at night. It was remarked that the clock began to strike, and I began to cry, simultaneously.
+    const joinsPrev =
+      current !== null &&
+      previous !== null &&
+      previous.canConnectNext &&
+      current.canConnectPrev;
+    const joinsNext =
+      current !== null &&
+      next !== null &&
+      current.canConnectNext &&
+      next.canConnectPrev;
 
-母は、朝から夜まで家の中のあらゆるものを磨いていた。窓ガラスから銀のスプーンまで、そしてその合間にも世界のあらゆる不思議について語ってくれた。彼女の言葉は水のように流れ、私の心の土壌に染み込んでいった。 One morning, when Gregor Samsa woke from troubled dreams, he found himself transformed in his bed into a horrible vermin. He lay on his armour-like back, and if he lifted his head a little he could see his brown belly, slightly domed and divided by arches into stiff sections.
+    let glyph = source;
 
-One morning, when Gregor Samsa woke from troubled dreams, he found himself transformed in his bed into a horrible vermin. He lay on his armour-like back, and if he lifted his head a little he could see his brown belly, slightly domed and divided by arches into stiff sections.
+    if (current !== null) {
+      if (joinsPrev && joinsNext && current.medial) {
+        glyph = current.medial;
+      } else if (joinsPrev && current.final) {
+        glyph = current.final;
+      } else if (joinsNext && current.initial) {
+        glyph = current.initial;
+      } else {
+        glyph = current.isolated;
+      }
+    }
 
-In a hole in the ground there lived a hobbit. Not a nasty, dirty, wet hole, filled with the ends of worms and an oozy smell, nor yet a dry, bare, sandy hole with nothing in it to sit down on or to eat: it was a hobbit-hole, and that means comfort.
-
-It was a bright cold day in April, and the clocks were striking thirteen. Winston Smith, his chin nuzzled into his breast in an effort to escape the vile wind, slipped quickly through the glass doors of Victory Mansions, though not quickly enough to prevent a swirl of gritty dust from entering along with him.
-
-The sun shone, having no alternative One morning, when Gregor Samsa woke from troubled dreams, he found himself transformed in his bed into a horrible vermin. He lay on his armour-like back, and if he lifted his head a little he could see his brown belly, slightly domed and divided by arches into stiff sections.
-
-One morning, when Gregor Samsa woke from troubled dreams, he found himself transformed in his bed into a horrible vermin. He lay on his armour-like back, and if he lifted his head a little he could see his brown belly, slightly domed and divided by arches into stiff sections.
-
-In a hole in the ground there lived a hobbit. Not a nasty, dirty, wet hole, filled with the ends of worms and an oozy smell, nor yet a dry, bare, sandy hole with nothing in it to sit down on or to eat: it was a hobbit-hole, and that means comfort.
-
-It was a bright cold day in April, and the clocks were striking thirteen. Winston Smith, his chin nuzzled into his breast in an effort to escape the vile wind, slipped quickly through the glass doors of Victory Mansions, though not quickly enough to prevent a swirl of gritty dust from entering along with him.
-
-The sun shone, having no alternative, on the nothing new. Murphy sat out of it, as though he were free, in a mew in West Brompton. Here for what might have been six months he had eaten, drunk, slept, and put his clothes on and off, in a medium-sized cage of north-western aspect commanding an unbroken view of medium-sized cages of south-eastern aspect.`;
+    return {
+      glyph,
+      joinsNext,
+      width: 0,
+    };
+  });
+}
 
 export function mountPretextBlackHole(canvas, options = {}) {
   const ctx = canvas.getContext("2d");
   if (ctx === null) return () => {};
+
   const container = canvas.parentElement ?? canvas;
   const FONT = options.font ?? DEFAULT_FONT;
   const LINE_HEIGHT = options.lineHeight ?? DEFAULT_LINE_HEIGHT;
@@ -83,140 +377,272 @@ export function mountPretextBlackHole(canvas, options = {}) {
   const MAX_DPR = options.maxDevicePixelRatio ?? DEFAULT_MAX_DPR;
   const EVENT_HORIZON = options.eventHorizon ?? DEFAULT_EVENT_HORIZON;
   const GRAVITY_RADIUS = options.gravityRadius ?? DEFAULT_GRAVITY_RADIUS;
-  const GRAVITY_STRENGTH =
-    options.gravityStrength ?? DEFAULT_GRAVITY_STRENGTH;
+  const GRAVITY_STRENGTH = options.gravityStrength ?? DEFAULT_GRAVITY_STRENGTH;
   const WARP_STRENGTH = options.warpStrength ?? DEFAULT_WARP_STRENGTH;
   const SWALLOW_RADIUS = options.swallowRadius ?? DEFAULT_SWALLOW_RADIUS;
   const BG_COLOR = options.backgroundColor ?? DEFAULT_BACKGROUND_COLOR;
   const CHAR_COLOR = options.charColor ?? DEFAULT_CHAR_COLOR;
   const CHAR_GLOW_COLOR = options.charGlowColor ?? DEFAULT_CHAR_GLOW_COLOR;
-  const ACCRETION_COLORS =
-    options.accretionColors ?? DEFAULT_ACCRETION_COLORS;
+  const ACCRETION_COLORS = options.accretionColors ?? DEFAULT_ACCRETION_COLORS;
   const STAR_COUNT = options.starCount ?? DEFAULT_STAR_COUNT;
   const NEBULA_LAYERS = options.nebulaLayers ?? DEFAULT_NEBULA_LAYERS;
-  const TEXT_CONTENT = options.text ?? DEFAULT_TEXT_CONTENT;
-  let W, H;
-  let mouse = { x: -999, y: -999 };
-  let smoothMouse = { x: -999, y: -999 };
-  let prevSmoothMouse = { x: -999, y: -999 };
-  let holeVelocity = { x: 0, y: 0 };
-  let chars = [];
-  let time = 0;
+  const TEXT_WORDS = getTextWords(options.text ?? DEFAULT_TEXT_CONTENT);
+  const words = TEXT_WORDS.length > 0 ? TEXT_WORDS : DEFAULT_WORDS;
+
+  let W = 1;
+  let H = 1;
   let dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-  let stars = [];
-  let accretionParticles = [];
+  let time = 0;
   let animationFrameId = 0;
-  const prepared = prepareWithSegments(TEXT_CONTENT, FONT);
-  const charWidthCache = new Map();
-  const hasResizeObserver = typeof ResizeObserver === "function";
   let resizeObserver = null;
 
+  let mouse = { x: 0, y: 0, active: false };
+  let chars = [];
+  let stars = [];
+  let accretionParticles = [];
+  let hawkingParticles = [];
+  const hole = { x: 0, y: 0 };
+  const holeVelocity = { x: 0, y: 0 };
+
+  const charWidthCache = new Map();
+  const wordLayoutCache = new Map();
+  const hasResizeObserver = typeof ResizeObserver === "function";
+
+  function configureTextContext() {
+    ctx.font = FONT;
+    ctx.textBaseline = "top";
+    ctx.textAlign = "left";
+    if ("direction" in ctx) {
+      ctx.direction = "rtl";
+    }
+  }
+
+  function configureCenterWordContext() {
+    ctx.font = `600 ${Math.round(EVENT_HORIZON * 0.82)}px "Noto Naskh Arabic", "Amiri", "Noto Sans Arabic", "Segoe UI", serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    if ("direction" in ctx) {
+      ctx.direction = "rtl";
+    }
+  }
+
+  function updateHoleCenter() {
+    hole.x = W / 2;
+    hole.y = H / 2;
+  }
+
+  function setMouseFromClient(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    mouse.x = clientX - rect.left;
+    mouse.y = clientY - rect.top;
+    mouse.active = true;
+  }
+
   function getCharWidth(ch) {
-    let width = charWidthCache.get(ch);
+    const cacheKey = `${FONT}::${ch}`;
+    let width = charWidthCache.get(cacheKey);
     if (width !== undefined) return width;
 
+    configureTextContext();
     width = ctx.measureText(ch).width;
-    charWidthCache.set(ch, width);
+    charWidthCache.set(cacheKey, width);
     return width;
+  }
+
+  function getWordLayout(word) {
+    let layout = wordLayoutCache.get(word);
+    if (layout !== undefined) return layout;
+
+    configureTextContext();
+
+    const units = shapeArabicWord(word).map((unit) => ({
+      ...unit,
+      width: getCharWidth(unit.glyph),
+    }));
+
+    const totalGlyphWidth = units.reduce((sum, unit) => sum + unit.width, 0);
+    const adjustablePairs = [];
+
+    for (let i = 0; i < units.length - 1; i++) {
+      if (units[i].joinsNext) {
+        adjustablePairs.push(i);
+      }
+    }
+
+    if (adjustablePairs.length === 0) {
+      for (let i = 0; i < units.length - 1; i++) {
+        adjustablePairs.push(i);
+      }
+    }
+
+    const naturalWidth = ctx.measureText(word).width || totalGlyphWidth;
+    const pairAdjustment =
+      adjustablePairs.length > 0
+        ? (totalGlyphWidth - naturalWidth) / adjustablePairs.length
+        : 0;
+
+    layout = {
+      units,
+      width:
+        adjustablePairs.length > 0
+          ? totalGlyphWidth - pairAdjustment * adjustablePairs.length
+          : totalGlyphWidth,
+      pairAdjustment,
+      adjustablePairs: new Set(adjustablePairs),
+    };
+
+    wordLayoutCache.set(word, layout);
+    return layout;
   }
 
   function getCanvasBounds() {
     const rect = container.getBoundingClientRect();
     return {
-      left: rect.left,
-      top: rect.top,
       width: Math.max(1, Math.round(rect.width || canvas.clientWidth || 1)),
       height: Math.max(1, Math.round(rect.height || canvas.clientHeight || 1)),
     };
   }
 
-  function setMouseFromClient(clientX, clientY) {
-    const bounds = getCanvasBounds();
-    mouse.x = clientX - bounds.left;
-    mouse.y = clientY - bounds.top;
-  }
-
-  // ── Stars ──
   function initStars() {
     stars = [];
     for (let i = 0; i < STAR_COUNT; i++) {
       stars.push({
         x: Math.random() * W,
         y: Math.random() * H,
-        size: Math.random() * 1.8 + 0.3,
-        brightness: Math.random() * 0.5 + 0.2,
-        twinkleSpeed: Math.random() * 3 + 1,
+        size: Math.random() * 1.6 + 0.25,
+        brightness: Math.random() * 0.45 + 0.2,
+        twinkleSpeed: Math.random() * 2.5 + 0.8,
         twinklePhase: Math.random() * Math.PI * 2,
         hue:
-          Math.random() < 0.3
-            ? 220 + Math.random() * 40
-            : Math.random() < 0.5
-              ? 30 + Math.random() * 20
-              : 270 + Math.random() * 30,
+          Math.random() < 0.35
+            ? 220 + Math.random() * 32
+            : Math.random() < 0.6
+              ? 30 + Math.random() * 18
+              : 272 + Math.random() * 24,
       });
     }
   }
 
-  // ── Accretion disk particles ──
   function initAccretion() {
     accretionParticles = [];
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < 180; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const orbitRadius = EVENT_HORIZON + Math.random() * 100 + 10;
+      const orbitRadius = EVENT_HORIZON + 18 + Math.random() * 104;
       accretionParticles.push({
         angle,
         orbitRadius,
-        speed: (0.3 + Math.random() * 0.8) / (orbitRadius * 0.02),
-        size: Math.random() * 2.5 + 0.5,
+        speed: (0.28 + Math.random() * 0.42) / (orbitRadius * 0.024),
+        size: Math.random() * 2.1 + 0.45,
         colorIdx: Math.floor(Math.random() * ACCRETION_COLORS.length),
-        brightness: Math.random() * 0.6 + 0.4,
-        z: (Math.random() - 0.5) * 0.6, // vertical offset for 3d feel
+        brightness: Math.random() * 0.55 + 0.35,
+        z: (Math.random() - 0.5) * 0.6,
       });
     }
     accretionParticles.sort((a, b) => a.z - b.z);
   }
 
-  // ── Build character positions using pretext ──
-  function buildLayout() {
-    chars = [];
-    const maxWidth = W - PADDING * 2;
-    const { lines } = layoutWithLines(prepared, maxWidth, LINE_HEIGHT);
+  function pushWordCharacters(wordLayout, cursorX, baseY) {
+    for (let i = 0; i < wordLayout.units.length; i++) {
+      const unit = wordLayout.units[i];
+      const x = cursorX - unit.width;
 
-    ctx.save();
-    ctx.font = FONT;
-    for (let i = 0; i < lines.length; i++) {
-      const lineText = lines[i].text;
-      const baseY = PADDING + i * LINE_HEIGHT;
-      if (baseY > H + 50) break;
-      let x = PADDING;
-      for (let j = 0; j < lineText.length; j++) {
-        const ch = lineText[j];
-        const charWidth = getCharWidth(ch);
-        if (ch === " ") {
-          x += charWidth;
-          continue;
-        }
-        chars.push({
-          char: ch,
-          baseX: x,
-          baseY,
-          x,
-          y: baseY,
-          vx: 0,
-          vy: 0,
-          absorbed: false,
-          absorbProgress: 0,
-          fieldInfluence: 0,
-          stretch: 1,
-          rotation: 0,
-        });
-        x += charWidth;
+      chars.push({
+        char: unit.glyph,
+        width: unit.width,
+        baseX: x,
+        baseY,
+        x,
+        y: baseY,
+        vx: 0,
+        vy: 0,
+        absorbed: false,
+        absorbProgress: 0,
+        fieldInfluence: 0,
+        stretch: 1,
+        rotation: 0,
+      });
+
+      cursorX = x;
+
+      if (wordLayout.adjustablePairs.has(i)) {
+        cursorX += wordLayout.pairAdjustment;
       }
     }
-    ctx.restore();
+
+    return cursorX;
   }
 
-  // ── Resize ──
+  function buildLayout() {
+    chars = [];
+
+    if (words.length === 0) return;
+
+    configureTextContext();
+
+    const maxWidth = Math.max(1, W - PADDING * 2);
+    const spaceWidth = Math.max(
+      ctx.measureText(" ").width,
+      DEFAULT_FONT_SIZE * 0.36,
+    );
+    const maxLines = Math.max(1, Math.floor((H - PADDING * 2) / LINE_HEIGHT));
+    const lines = [];
+    let wordIndex = 0;
+
+    for (let lineIndex = 0; lineIndex < maxLines; lineIndex++) {
+      const lineWords = [];
+      let lineWidth = 0;
+      let safety = 0;
+
+      while (safety < words.length * 2) {
+        const wordLayout = getWordLayout(words[wordIndex % words.length]);
+        const nextWidth =
+          lineWords.length === 0
+            ? wordLayout.width
+            : lineWidth + spaceWidth + wordLayout.width;
+
+        if (nextWidth > maxWidth && lineWords.length > 0) {
+          break;
+        }
+
+        lineWords.push(wordLayout);
+        lineWidth = nextWidth;
+        wordIndex++;
+        safety++;
+
+        if (wordLayout.width >= maxWidth) {
+          break;
+        }
+      }
+
+      if (lineWords.length === 0) {
+        break;
+      }
+
+      lines.push({
+        words: lineWords,
+        width: lineWidth,
+      });
+    }
+
+    if (lines.length === 0) return;
+
+    const blockHeight = lines.length * LINE_HEIGHT;
+    const startY = Math.max(PADDING, (H - blockHeight) / 2);
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const baseY = startY + i * LINE_HEIGHT;
+      let cursorX = PADDING + (maxWidth + line.width) / 2;
+
+      for (let j = 0; j < line.words.length; j++) {
+        cursorX = pushWordCharacters(line.words[j], cursorX, baseY);
+        if (j < line.words.length - 1) {
+          cursorX -= spaceWidth;
+        }
+      }
+    }
+  }
+
   function resize() {
     const bounds = getCanvasBounds();
     W = bounds.width;
@@ -224,68 +650,133 @@ export function mountPretextBlackHole(canvas, options = {}) {
     dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
     canvas.width = W * dpr;
     canvas.height = H * dpr;
-    canvas.style.width = W + "px";
-    canvas.style.height = H + "px";
+    canvas.style.width = `${W}px`;
+    canvas.style.height = `${H}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    updateHoleCenter();
+    if (!mouse.active) {
+      mouse.x = hole.x;
+      mouse.y = hole.y;
+    }
     initStars();
     initAccretion();
     buildLayout();
   }
 
-  // ── Draw stars ──
+  function warpChar(char) {
+    const dx = char.baseX - hole.x;
+    const dy = char.baseY - hole.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    char.fieldInfluence = 0;
+
+    if (dist < GRAVITY_RADIUS && dist > 1) {
+      const angle = Math.atan2(dy, dx);
+      const tangent = angle + Math.PI / 2;
+      const normalized = dist / GRAVITY_RADIUS;
+      const pullStrength = Math.pow(1 - normalized, 2) * GRAVITY_STRENGTH;
+      const flowStrength = Math.pow(1 - normalized, 1.5);
+
+      char.fieldInfluence = flowStrength;
+      char.vx -= Math.cos(angle) * pullStrength * 0.15;
+      char.vy -= Math.sin(angle) * pullStrength * 0.15;
+
+      const tangentialForce = pullStrength * WARP_STRENGTH * (1 - normalized);
+      char.vx += Math.cos(tangent) * tangentialForce * 0.08;
+      char.vy += Math.sin(tangent) * tangentialForce * 0.08;
+      char.vx += holeVelocity.x * (0.18 + flowStrength * 0.72);
+      char.vy += holeVelocity.y * (0.18 + flowStrength * 0.72);
+
+      if (dist < EVENT_HORIZON * 2.5) {
+        char.stretch = 1 + (1 - dist / (EVENT_HORIZON * 2.5)) * 2;
+        char.rotation = angle + Math.PI;
+      } else {
+        char.stretch = 1;
+        char.rotation = 0;
+      }
+
+      if (dist < SWALLOW_RADIUS && !char.absorbed) {
+        char.absorbed = true;
+      }
+    } else {
+      char.stretch = 1;
+      char.rotation = 0;
+    }
+
+    if (char.absorbed) {
+      char.absorbProgress += 0.02;
+      if (char.absorbProgress > 1) {
+        char.absorbProgress = 1;
+      }
+      char.fieldInfluence = 1;
+      char.vx += (hole.x - char.x) * 0.08;
+      char.vy += (hole.y - char.y) * 0.08;
+      char.vx += holeVelocity.x * 0.95;
+      char.vy += holeVelocity.y * 0.95;
+    }
+
+    if (char.absorbed) {
+      const currentDist = Math.sqrt(
+        (char.baseX - hole.x) ** 2 + (char.baseY - hole.y) ** 2,
+      );
+      if (currentDist > GRAVITY_RADIUS * 0.8) {
+        char.absorbProgress -= 0.03;
+        if (char.absorbProgress <= 0) {
+          char.absorbed = false;
+          char.absorbProgress = 0;
+        }
+      }
+    }
+  }
+
   function drawStars() {
     for (const star of stars) {
       const twinkle =
-        Math.sin(time * star.twinkleSpeed + star.twinklePhase) * 0.3 + 0.7;
+        Math.sin(time * star.twinkleSpeed + star.twinklePhase) * 0.25 + 0.75;
       const alpha = star.brightness * twinkle;
 
-      // Gravitational lensing: stars near black hole shift position
-      const dx = star.x - smoothMouse.x;
-      const dy = star.y - smoothMouse.y;
+      const dx = star.x - hole.x;
+      const dy = star.y - hole.y;
       const dist = Math.sqrt(dx * dx + dy * dy);
       let sx = star.x;
       let sy = star.y;
       let sizeMultiplier = 1;
 
-      if (dist < GRAVITY_RADIUS * 1.5 && dist > EVENT_HORIZON * 0.5) {
-        // Lensing: shift star position tangentially
-        const lensStrength = 1 - dist / (GRAVITY_RADIUS * 1.5);
+      if (dist < GRAVITY_RADIUS * 1.4 && dist > EVENT_HORIZON * 0.8) {
+        const lensStrength = 1 - dist / (GRAVITY_RADIUS * 1.4);
         const angle = Math.atan2(dy, dx);
         const tangent = angle + Math.PI / 2;
-        sx += Math.cos(tangent) * lensStrength * 30;
-        sy += Math.sin(tangent) * lensStrength * 30;
-        // Stars near event horizon appear brighter (Einstein ring effect)
-        if (dist < EVENT_HORIZON * 2.5) {
-          sizeMultiplier = 1 + (1 - dist / (EVENT_HORIZON * 2.5)) * 3;
+        sx += Math.cos(tangent) * lensStrength * 18;
+        sy += Math.sin(tangent) * lensStrength * 18;
+
+        if (dist < EVENT_HORIZON * 2.8) {
+          sizeMultiplier = 1 + (1 - dist / (EVENT_HORIZON * 2.8)) * 2.2;
         }
       }
 
-      if (dist < EVENT_HORIZON * 0.8) continue; // swallowed
+      if (dist < EVENT_HORIZON * 0.92) continue;
 
       ctx.beginPath();
       ctx.arc(sx, sy, star.size * sizeMultiplier, 0, Math.PI * 2);
       ctx.fillStyle = `hsla(${star.hue}, 60%, 85%, ${alpha})`;
       ctx.fill();
 
-      // Glow for brighter stars
-      if (star.size > 1.2) {
+      if (star.size > 1.1) {
         ctx.beginPath();
-        ctx.arc(sx, sy, star.size * sizeMultiplier * 3, 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(${star.hue}, 50%, 80%, ${alpha * 0.1})`;
+        ctx.arc(sx, sy, star.size * sizeMultiplier * 2.8, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${star.hue}, 55%, 80%, ${alpha * 0.08})`;
         ctx.fill();
       }
     }
   }
 
-  // ── Draw nebula background ──
   function drawNebula() {
     for (let i = 0; i < NEBULA_LAYERS; i++) {
       const centerX = W * (0.2 + i * 0.2);
-      const centerY = H * (0.3 + (i % 2) * 0.4);
-      const radius = W * (0.2 + i * 0.05);
-      const hue = [260, 220, 300, 200][i];
+      const centerY = H * (0.28 + (i % 2) * 0.42);
+      const radius = W * (0.22 + i * 0.05);
+      const hue = [258, 214, 304, 196][i];
 
-      const grad = ctx.createRadialGradient(
+      const gradient = ctx.createRadialGradient(
         centerX,
         centerY,
         0,
@@ -293,335 +784,288 @@ export function mountPretextBlackHole(canvas, options = {}) {
         centerY,
         radius,
       );
-      grad.addColorStop(0, `hsla(${hue}, 60%, 15%, 0.04)`);
-      grad.addColorStop(0.5, `hsla(${hue}, 40%, 10%, 0.02)`);
-      grad.addColorStop(1, "hsla(0, 0%, 0%, 0)");
-      ctx.fillStyle = grad;
+      gradient.addColorStop(0, `hsla(${hue}, 60%, 16%, 0.045)`);
+      gradient.addColorStop(0.55, `hsla(${hue}, 38%, 10%, 0.022)`);
+      gradient.addColorStop(1, "hsla(0, 0%, 0%, 0)");
+      ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, W, H);
     }
   }
 
-  // ── Draw accretion disk ──
+  function drawLensingRing() {
+    const rings = [
+      { radius: EVENT_HORIZON * 1.95, alpha: 0.05, width: 10, hue: 42 },
+      { radius: EVENT_HORIZON * 2.7, alpha: 0.028, width: 14, hue: 260 },
+      { radius: EVENT_HORIZON * 3.7, alpha: 0.016, width: 20, hue: 220 },
+    ];
+
+    for (const ring of rings) {
+      const pulse = 1 + Math.sin(time * 0.7 + ring.radius * 0.01) * 0.06;
+      const radius = ring.radius * pulse;
+      const gradient = ctx.createRadialGradient(
+        hole.x,
+        hole.y,
+        radius - ring.width,
+        hole.x,
+        hole.y,
+        radius + ring.width,
+      );
+      gradient.addColorStop(0, `hsla(${ring.hue}, 60%, 72%, 0)`);
+      gradient.addColorStop(0.5, `hsla(${ring.hue}, 60%, 72%, ${ring.alpha})`);
+      gradient.addColorStop(1, `hsla(${ring.hue}, 60%, 72%, 0)`);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(
+        hole.x - radius - ring.width,
+        hole.y - radius - ring.width,
+        (radius + ring.width) * 2,
+        (radius + ring.width) * 2,
+      );
+    }
+  }
+
+  function drawHoleCore() {
+    const coreGradient = ctx.createRadialGradient(
+      hole.x,
+      hole.y,
+      EVENT_HORIZON * 0.18,
+      hole.x,
+      hole.y,
+      EVENT_HORIZON * 1.1,
+    );
+    coreGradient.addColorStop(0, "rgba(0, 0, 0, 0.98)");
+    coreGradient.addColorStop(0.45, "rgba(2, 1, 8, 0.98)");
+    coreGradient.addColorStop(0.78, "rgba(2, 1, 8, 0.72)");
+    coreGradient.addColorStop(1, "rgba(2, 1, 8, 0)");
+
+    ctx.beginPath();
+    ctx.arc(hole.x, hole.y, EVENT_HORIZON, 0, Math.PI * 2);
+    ctx.fillStyle = coreGradient;
+    ctx.fill();
+
+    ctx.save();
+    ctx.filter = "blur(14px)";
+    ctx.beginPath();
+    ctx.arc(hole.x, hole.y, EVENT_HORIZON * 0.92, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(12, 10, 22, 0.78)";
+    ctx.lineWidth = EVENT_HORIZON * 0.32;
+    ctx.stroke();
+    ctx.restore();
+
+    const featherGradient = ctx.createRadialGradient(
+      hole.x,
+      hole.y,
+      EVENT_HORIZON * 0.56,
+      hole.x,
+      hole.y,
+      EVENT_HORIZON * 1.36,
+    );
+    featherGradient.addColorStop(0, "rgba(0, 0, 0, 0)");
+    featherGradient.addColorStop(0.62, "rgba(8, 6, 18, 0.18)");
+    featherGradient.addColorStop(0.82, "rgba(18, 14, 30, 0.38)");
+    featherGradient.addColorStop(1, "rgba(2, 1, 8, 0)");
+
+    ctx.fillStyle = featherGradient;
+    ctx.fillRect(
+      hole.x - EVENT_HORIZON * 1.5,
+      hole.y - EVENT_HORIZON * 1.5,
+      EVENT_HORIZON * 3,
+      EVENT_HORIZON * 3,
+    );
+  }
+
+  function drawCenterWord() {
+    ctx.save();
+    configureCenterWordContext();
+    ctx.shadowColor = "rgba(255, 245, 225, 0.38)";
+    ctx.shadowBlur = EVENT_HORIZON * 0.42;
+    ctx.fillStyle = "rgba(248, 241, 229, 0.92)";
+    ctx.fillText(HOLE_WORD, hole.x, hole.y + EVENT_HORIZON * 0.04);
+    ctx.restore();
+  }
+
   function drawAccretionDisk() {
-    const mx = smoothMouse.x;
-    const my = smoothMouse.y;
-
-    // Disk tilt factor (slight 3D perspective)
     const tiltY = 0.35;
-
-    // Outer glow
-    const glowSize = EVENT_HORIZON * 3.5;
+    const glowSize = EVENT_HORIZON * 4.1;
     const outerGlow = ctx.createRadialGradient(
-      mx,
-      my,
-      EVENT_HORIZON * 0.8,
-      mx,
-      my,
+      hole.x,
+      hole.y,
+      EVENT_HORIZON * 0.9,
+      hole.x,
+      hole.y,
       glowSize,
     );
-    outerGlow.addColorStop(0, "rgba(180, 120, 255, 0.06)");
-    outerGlow.addColorStop(0.3, "rgba(255, 150, 50, 0.03)");
-    outerGlow.addColorStop(0.6, "rgba(100, 80, 200, 0.015)");
+    outerGlow.addColorStop(0, "rgba(188, 128, 255, 0.07)");
+    outerGlow.addColorStop(0.32, "rgba(255, 152, 58, 0.04)");
+    outerGlow.addColorStop(0.62, "rgba(104, 84, 206, 0.018)");
     outerGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
     ctx.fillStyle = outerGlow;
-    ctx.fillRect(mx - glowSize, my - glowSize, glowSize * 2, glowSize * 2);
+    ctx.fillRect(
+      hole.x - glowSize,
+      hole.y - glowSize,
+      glowSize * 2,
+      glowSize * 2,
+    );
 
-    // Draw particles in orbit
-    for (const p of accretionParticles) {
-      p.angle += p.speed * 0.016;
+    for (const particle of accretionParticles) {
+      particle.angle += particle.speed * 0.016;
 
-      const px = mx + Math.cos(p.angle) * p.orbitRadius;
-      const py = my + Math.sin(p.angle) * p.orbitRadius * tiltY + p.z * 15;
-
-      // Particles behind the black hole are dimmer
-      const behindFactor = Math.sin(p.angle) < 0 ? 0.3 : 1.0;
-
-      const col = ACCRETION_COLORS[p.colorIdx];
+      const px = hole.x + Math.cos(particle.angle) * particle.orbitRadius;
+      const py =
+        hole.y +
+        Math.sin(particle.angle) * particle.orbitRadius * tiltY +
+        particle.z * 16;
+      const behindFactor = Math.sin(particle.angle) < 0 ? 0.3 : 1;
+      const color = ACCRETION_COLORS[particle.colorIdx];
       const alpha =
-        p.brightness *
+        particle.brightness *
         behindFactor *
-        (0.5 + Math.sin(time * 2 + p.angle) * 0.2);
-
-      // Doppler-like effect: approaching side brighter
-      const dopplerBoost = 1 + Math.cos(p.angle) * 0.4;
+        (0.52 + Math.sin(time * 2 + particle.angle) * 0.2);
+      const dopplerBoost = 1 + Math.cos(particle.angle) * 0.35;
 
       ctx.beginPath();
-      ctx.arc(px, py, p.size * dopplerBoost, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${col[0]}, ${col[1]}, ${col[2]}, ${alpha * dopplerBoost})`;
+      ctx.arc(px, py, particle.size * dopplerBoost, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha * dopplerBoost})`;
       ctx.fill();
 
-      // Trail
-      const trailLen = 5;
-      for (let t = 1; t <= trailLen; t++) {
-        const ta = p.angle - p.speed * 0.016 * t * 3;
-        const tx = mx + Math.cos(ta) * p.orbitRadius;
-        const ty = my + Math.sin(ta) * p.orbitRadius * tiltY + p.z * 15;
-        const tAlpha = alpha * (1 - t / trailLen) * 0.3;
+      for (let i = 1; i <= 5; i++) {
+        const tailAngle = particle.angle - particle.speed * 0.016 * i * 3;
+        const tx = hole.x + Math.cos(tailAngle) * particle.orbitRadius;
+        const ty =
+          hole.y +
+          Math.sin(tailAngle) * particle.orbitRadius * tiltY +
+          particle.z * 16;
+        const tailAlpha = alpha * (1 - i / 5) * 0.28;
+
         ctx.beginPath();
-        ctx.arc(tx, ty, p.size * 0.6, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${col[0]}, ${col[1]}, ${col[2]}, ${tAlpha})`;
+        ctx.arc(tx, ty, particle.size * 0.58, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${tailAlpha})`;
         ctx.fill();
       }
     }
 
-    // Photon ring — bright ring right at event horizon
     ctx.beginPath();
     ctx.ellipse(
-      mx,
-      my,
-      EVENT_HORIZON * 1.15,
-      EVENT_HORIZON * 1.15 * tiltY,
+      hole.x,
+      hole.y,
+      EVENT_HORIZON * 1.2,
+      EVENT_HORIZON * 1.2 * tiltY,
       0,
       0,
       Math.PI * 2,
     );
-    ctx.strokeStyle = `rgba(255, 200, 100, ${0.15 + Math.sin(time * 1.5) * 0.05})`;
+    ctx.strokeStyle = `rgba(255, 204, 112, ${0.16 + Math.sin(time * 1.5) * 0.04})`;
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Inner photon ring
     ctx.beginPath();
     ctx.ellipse(
-      mx,
-      my,
-      EVENT_HORIZON * 1.05,
-      EVENT_HORIZON * 1.05 * tiltY,
+      hole.x,
+      hole.y,
+      EVENT_HORIZON * 1.06,
+      EVENT_HORIZON * 1.06 * tiltY,
       0,
       0,
       Math.PI * 2,
     );
-    ctx.strokeStyle = `rgba(220, 180, 255, ${0.2 + Math.sin(time * 2) * 0.05})`;
+    ctx.strokeStyle = `rgba(226, 188, 255, ${0.2 + Math.sin(time * 1.8) * 0.04})`;
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Event horizon — pure black circle with soft edge
-    const horizonGrad = ctx.createRadialGradient(
-      mx,
-      my,
-      EVENT_HORIZON * 0.6,
-      mx,
-      my,
-      EVENT_HORIZON,
-    );
-    horizonGrad.addColorStop(0, "rgba(2, 1, 8, 1)");
-    horizonGrad.addColorStop(0.7, "rgba(2, 1, 8, 0.98)");
-    horizonGrad.addColorStop(1, "rgba(2, 1, 8, 0)");
-    ctx.beginPath();
-    ctx.arc(mx, my, EVENT_HORIZON, 0, Math.PI * 2);
-    ctx.fillStyle = horizonGrad;
-    ctx.fill();
+    drawHoleCore();
+    drawCenterWord();
   }
 
-  // ── Gravitational text warping ──
-  function warpChar(c) {
-    const dx = c.baseX - smoothMouse.x;
-    const dy = c.baseY - smoothMouse.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    c.fieldInfluence = 0;
-
-    if (dist < GRAVITY_RADIUS && dist > 1) {
-      const angle = Math.atan2(dy, dx);
-      const tangent = angle + Math.PI / 2;
-
-      // Gravitational pull — inverse square-ish
-      const normalized = dist / GRAVITY_RADIUS;
-      const pullStrength = Math.pow(1 - normalized, 2) * GRAVITY_STRENGTH;
-      const flowStrength = Math.pow(1 - normalized, 1.5);
-      c.fieldInfluence = flowStrength;
-
-      // Radial pull (toward black hole)
-      c.vx -= Math.cos(angle) * pullStrength * 0.15;
-      c.vy -= Math.sin(angle) * pullStrength * 0.15;
-
-      // Tangential warp (frame dragging / Kerr black hole effect)
-      const tangentialForce = pullStrength * WARP_STRENGTH * (1 - normalized);
-      c.vx += Math.cos(tangent) * tangentialForce * 0.08;
-      c.vy += Math.sin(tangent) * tangentialForce * 0.08;
-      c.vx += holeVelocity.x * (0.18 + flowStrength * 0.72);
-      c.vy += holeVelocity.y * (0.18 + flowStrength * 0.72);
-
-      // Spaghettification: stretch chars near event horizon
-      if (dist < EVENT_HORIZON * 2.5) {
-        c.stretch = 1 + (1 - dist / (EVENT_HORIZON * 2.5)) * 2;
-        c.rotation = angle + Math.PI; // point toward black hole
-      } else {
-        c.stretch = 1;
-        c.rotation = 0;
-      }
-
-      // Absorption
-      if (dist < SWALLOW_RADIUS && !c.absorbed) {
-        c.absorbed = true;
-      }
-    } else {
-      c.stretch = 1;
-      c.rotation = 0;
-    }
-
-    if (c.absorbed) {
-      c.absorbProgress += 0.02;
-      if (c.absorbProgress > 1) c.absorbProgress = 1;
-      c.fieldInfluence = 1;
-
-      // Pull hard toward center
-      c.vx += (smoothMouse.x - c.x) * 0.08;
-      c.vy += (smoothMouse.y - c.y) * 0.08;
-      c.vx += holeVelocity.x * 0.95;
-      c.vy += holeVelocity.y * 0.95;
-    }
-
-    // Gradually release absorbed chars when mouse moves away
-    if (c.absorbed) {
-      const currentDist = Math.sqrt(
-        (c.baseX - smoothMouse.x) ** 2 + (c.baseY - smoothMouse.y) ** 2,
-      );
-      if (currentDist > GRAVITY_RADIUS * 0.8) {
-        c.absorbProgress -= 0.03;
-        if (c.absorbProgress <= 0) {
-          c.absorbed = false;
-          c.absorbProgress = 0;
-        }
-      }
-    }
-  }
-
-  // ── Gravitational lensing ring (Einstein ring glow) ──
-  function drawLensingRing() {
-    const mx = smoothMouse.x;
-    const my = smoothMouse.y;
-
-    // Multiple subtle rings at different radii
-    const rings = [
-      { radius: EVENT_HORIZON * 1.8, alpha: 0.04, width: 8, hue: 45 },
-      { radius: EVENT_HORIZON * 2.5, alpha: 0.025, width: 12, hue: 260 },
-      { radius: EVENT_HORIZON * 3.5, alpha: 0.015, width: 18, hue: 220 },
-    ];
-
-    for (const ring of rings) {
-      const pulse = 1 + Math.sin(time * 0.8 + ring.radius * 0.01) * 0.1;
-      const r = ring.radius * pulse;
-
-      const grad = ctx.createRadialGradient(
-        mx,
-        my,
-        r - ring.width,
-        mx,
-        my,
-        r + ring.width,
-      );
-      grad.addColorStop(0, `hsla(${ring.hue}, 60%, 70%, 0)`);
-      grad.addColorStop(0.5, `hsla(${ring.hue}, 60%, 70%, ${ring.alpha})`);
-      grad.addColorStop(1, `hsla(${ring.hue}, 60%, 70%, 0)`);
-      ctx.fillStyle = grad;
-      ctx.fillRect(
-        mx - r - ring.width,
-        my - r - ring.width,
-        (r + ring.width) * 2,
-        (r + ring.width) * 2,
-      );
-    }
-  }
-
-  // ── Hawking radiation particles ──
-  let hawkingParticles = [];
   function updateHawkingRadiation() {
-    // Spawn
-    if (Math.random() < 0.3) {
+    if (Math.random() < 0.22) {
       const angle = Math.random() * Math.PI * 2;
       hawkingParticles.push({
-        x: smoothMouse.x + Math.cos(angle) * EVENT_HORIZON * 1.1,
-        y: smoothMouse.y + Math.sin(angle) * EVENT_HORIZON * 1.1,
-        vx: Math.cos(angle) * (1 + Math.random() * 2),
-        vy: Math.sin(angle) * (1 + Math.random() * 2),
+        x: hole.x + Math.cos(angle) * EVENT_HORIZON * 1.05,
+        y: hole.y + Math.sin(angle) * EVENT_HORIZON * 1.05,
+        vx: Math.cos(angle) * (0.8 + Math.random() * 1.6),
+        vy: Math.sin(angle) * (0.8 + Math.random() * 1.6),
         life: 1,
-        size: Math.random() * 1.5 + 0.5,
-        hue: Math.random() < 0.5 ? 260 : 40,
+        size: Math.random() * 1.3 + 0.45,
+        hue: Math.random() < 0.5 ? 260 : 42,
       });
     }
 
-    // Update & draw
     for (let i = hawkingParticles.length - 1; i >= 0; i--) {
-      const p = hawkingParticles[i];
-      p.x += p.vx;
-      p.y += p.vy;
-      p.life -= 0.015;
-      p.vx *= 0.98;
-      p.vy *= 0.98;
+      const particle = hawkingParticles[i];
+      particle.x += particle.vx;
+      particle.y += particle.vy;
+      particle.life -= 0.018;
+      particle.vx *= 0.985;
+      particle.vy *= 0.985;
 
-      if (p.life <= 0) {
+      if (particle.life <= 0) {
         hawkingParticles.splice(i, 1);
         continue;
       }
 
       ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ctx.fillStyle = `hsla(${p.hue}, 70%, 80%, ${p.life * 0.4})`;
+      ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(${particle.hue}, 72%, 82%, ${particle.life * 0.34})`;
       ctx.fill();
     }
   }
 
-  // ── Main loop ──
   function frame() {
     time += 0.016;
+    const targetX = mouse.active ? mouse.x : W / 2;
+    const targetY = mouse.active ? mouse.y : H / 2;
+    const previousHoleX = hole.x;
+    const previousHoleY = hole.y;
+    hole.x += (targetX - hole.x) * DEFAULT_HOLE_FOLLOW;
+    hole.y += (targetY - hole.y) * DEFAULT_HOLE_FOLLOW;
+    holeVelocity.x = hole.x - previousHoleX;
+    holeVelocity.y = hole.y - previousHoleY;
 
-    // Smooth mouse follow
-    prevSmoothMouse.x = smoothMouse.x;
-    prevSmoothMouse.y = smoothMouse.y;
-    smoothMouse.x += (mouse.x - smoothMouse.x) * 0.08;
-    smoothMouse.y += (mouse.y - smoothMouse.y) * 0.08;
-    holeVelocity.x = smoothMouse.x - prevSmoothMouse.x;
-    holeVelocity.y = smoothMouse.y - prevSmoothMouse.y;
-
-    // Clear
     ctx.fillStyle = BG_COLOR;
     ctx.fillRect(0, 0, W, H);
 
-    // Background layers
     drawNebula();
     drawStars();
     drawLensingRing();
 
-    // Characters
-    ctx.font = FONT;
-    ctx.textBaseline = "top";
+    configureTextContext();
 
     for (let i = 0; i < chars.length; i++) {
-      const c = chars[i];
+      const char = chars[i];
 
-      warpChar(c);
+      warpChar(char);
+      const spring = 0.04 * (1 - char.fieldInfluence * 0.75);
+      char.vx += (char.baseX - char.x) * spring;
+      char.vy += (char.baseY - char.y) * spring;
+      char.vx *= 0.9;
+      char.vy *= 0.9;
+      char.x += char.vx;
+      char.y += char.vy;
 
-      // Spring back
-      const spring = 0.04 * (1 - c.fieldInfluence * 0.75);
-      c.vx += (c.baseX - c.x) * spring;
-      c.vy += (c.baseY - c.y) * spring;
-      c.vx *= 0.9;
-      c.vy *= 0.9;
-      c.x += c.vx;
-      c.y += c.vy;
-
-      // Don't draw fully absorbed chars
-      if (c.absorbProgress >= 1) continue;
+      if (char.absorbProgress >= 1) {
+        continue;
+      }
 
       const displacement = Math.sqrt(
-        (c.x - c.baseX) ** 2 + (c.y - c.baseY) ** 2,
+        (char.x - char.baseX) ** 2 + (char.y - char.baseY) ** 2,
       );
+      const charCenterX = char.x + char.width / 2;
+      const charCenterY = char.y + LINE_HEIGHT / 2;
       const distToHole = Math.sqrt(
-        (c.x - smoothMouse.x) ** 2 + (c.y - smoothMouse.y) ** 2,
+        (charCenterX - hole.x) ** 2 + (charCenterY - hole.y) ** 2,
       );
 
-      // Color: shift from dim purple to bright purple/gold near black hole
-      let r, g, b, alpha;
+      let r = CHAR_COLOR[0];
+      let g = CHAR_COLOR[1];
+      let b = CHAR_COLOR[2];
+      let alpha = 0.62;
 
-      if (displacement > 1) {
-        const t = Math.min(displacement / 40, 1);
-        // Gravitational blueshift/redshift effect
-        if (distToHole < GRAVITY_RADIUS * 0.5) {
-          // Close: gold-orange (redshifted)
+      if (displacement > 0.5) {
+        const t = Math.min(displacement / 18, 1);
+        if (distToHole < GRAVITY_RADIUS * 0.52) {
           r = Math.round(CHAR_COLOR[0] + (255 - CHAR_COLOR[0]) * t);
-          g = Math.round(CHAR_COLOR[1] + (160 - CHAR_COLOR[1]) * t);
-          b = Math.round(CHAR_COLOR[2] + (50 - CHAR_COLOR[2]) * t);
+          g = Math.round(CHAR_COLOR[1] + (166 - CHAR_COLOR[1]) * t);
+          b = Math.round(CHAR_COLOR[2] + (72 - CHAR_COLOR[2]) * t);
         } else {
-          // Further: purple-blue (blueshifted)
           r = Math.round(
             CHAR_COLOR[0] + (CHAR_GLOW_COLOR[0] - CHAR_COLOR[0]) * t,
           );
@@ -632,71 +1076,65 @@ export function mountPretextBlackHole(canvas, options = {}) {
             CHAR_COLOR[2] + (CHAR_GLOW_COLOR[2] - CHAR_COLOR[2]) * t,
           );
         }
-        alpha = Math.max(0.3, 1 - c.absorbProgress);
-      } else {
-        r = CHAR_COLOR[0];
-        g = CHAR_COLOR[1];
-        b = CHAR_COLOR[2];
-        alpha = 0.6;
+        alpha = Math.max(0.34, 0.9 - char.absorbProgress);
       }
 
       ctx.save();
 
-      // Spaghettification transform
-      if (c.stretch > 1.05) {
-        ctx.translate(c.x, c.y);
-        ctx.rotate(c.rotation);
-        ctx.scale(c.stretch, 1 / Math.sqrt(c.stretch));
-        ctx.translate(-c.x, -c.y);
+      if (char.stretch > 1.03) {
+        ctx.translate(charCenterX, charCenterY);
+        ctx.rotate(char.rotation);
+        ctx.scale(char.stretch, 1 / Math.sqrt(char.stretch));
+        ctx.translate(-charCenterX, -charCenterY);
       }
 
-      // Glow for strongly displaced chars
-      if (displacement > 15 && distToHole < GRAVITY_RADIUS * 0.6) {
-        ctx.shadowColor = `rgba(${r}, ${g}, ${b}, 0.5)`;
-        ctx.shadowBlur = Math.min(displacement * 0.3, 12);
+      if (displacement > 8 && distToHole < GRAVITY_RADIUS * 0.62) {
+        ctx.shadowColor = `rgba(${r}, ${g}, ${b}, 0.4)`;
+        ctx.shadowBlur = Math.min(displacement * 0.18, 8);
       }
 
-      ctx.globalAlpha = alpha * (1 - c.absorbProgress);
-      ctx.fillStyle = `rgb(${r},${g},${b})`;
-      ctx.fillText(c.char, c.x, c.y);
-
+      ctx.globalAlpha = alpha * (1 - char.absorbProgress);
+      ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+      ctx.fillText(char.char, char.x, char.y);
       ctx.restore();
     }
+
     ctx.globalAlpha = 1;
     ctx.shadowBlur = 0;
 
-    // Accretion disk & black hole (on top of text)
     drawAccretionDisk();
     updateHawkingRadiation();
 
-    // Vignette — deep space edge fade
-    const grad = ctx.createRadialGradient(
+    const vignette = ctx.createRadialGradient(
       W / 2,
       H / 2,
-      W * 0.25,
+      W * 0.24,
       W / 2,
       H / 2,
-      W * 0.75,
+      W * 0.76,
     );
-    grad.addColorStop(0, "rgba(2,1,8,0)");
-    grad.addColorStop(1, "rgba(2,1,8,0.7)");
-    ctx.fillStyle = grad;
+    vignette.addColorStop(0, "rgba(2, 1, 8, 0)");
+    vignette.addColorStop(1, "rgba(2, 1, 8, 0.72)");
+    ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, W, H);
 
     animationFrameId = requestAnimationFrame(frame);
   }
 
-  const handleMouseMove = (e) => {
-    setMouseFromClient(e.clientX, e.clientY);
+  const handlePointerMove = (event) => {
+    setMouseFromClient(event.clientX, event.clientY);
+  };
+
+  const handlePointerDown = (event) => {
+    setMouseFromClient(event.clientX, event.clientY);
   };
 
   const handlePointerLeave = () => {
-    mouse.x = -999;
-    mouse.y = -999;
+    mouse.active = false;
   };
 
-  canvas.addEventListener("pointermove", handleMouseMove);
-  canvas.addEventListener("pointerdown", handleMouseMove);
+  canvas.addEventListener("pointermove", handlePointerMove);
+  canvas.addEventListener("pointerdown", handlePointerDown);
   canvas.addEventListener("pointerleave", handlePointerLeave);
 
   if (hasResizeObserver) {
@@ -711,8 +1149,8 @@ export function mountPretextBlackHole(canvas, options = {}) {
 
   return () => {
     cancelAnimationFrame(animationFrameId);
-    canvas.removeEventListener("pointermove", handleMouseMove);
-    canvas.removeEventListener("pointerdown", handleMouseMove);
+    canvas.removeEventListener("pointermove", handlePointerMove);
+    canvas.removeEventListener("pointerdown", handlePointerDown);
     canvas.removeEventListener("pointerleave", handlePointerLeave);
     resizeObserver?.disconnect();
     if (!hasResizeObserver) {
