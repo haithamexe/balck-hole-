@@ -11,6 +11,14 @@ const DEFAULT_WARP_STRENGTH = 0.2;
 const DEFAULT_SWALLOW_RADIUS = 88;
 const DEFAULT_HOLE_FOLLOW = 0.08;
 const HOLE_WORD = "\u0627\u0644\u0644\u0647";
+const INTRO_TEXT_FADE_START = 0.08;
+const INTRO_TEXT_FADE_END = 1.05;
+const INTRO_HOLE_FADE_START = 0.82;
+const INTRO_HOLE_FADE_END = 1.78;
+const INTRO_EFFECT_START = 1.12;
+const INTRO_EFFECT_END = 3.08;
+const INTRO_POINTER_START = 1.3;
+const INTRO_POINTER_END = 2.6;
 
 const DEFAULT_BACKGROUND_COLOR = "#020108";
 const DEFAULT_CHAR_COLOR = [92, 86, 112];
@@ -296,6 +304,15 @@ const DEFAULT_WORDS = getTextWords(DEFAULT_TEXT_CONTENT);
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function smoothstepRange(start, end, value) {
+  if (end <= start) {
+    return value >= end ? 1 : 0;
+  }
+
+  const t = clamp((value - start) / (end - start), 0, 1);
+  return t * t * (3 - 2 * t);
 }
 
 function normalizeTextContent(text) {
@@ -663,18 +680,19 @@ export function mountPretextBlackHole(canvas, options = {}) {
     buildLayout();
   }
 
-  function warpChar(char) {
+  function warpChar(char, effectStrength) {
     const dx = char.baseX - hole.x;
     const dy = char.baseY - hole.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     char.fieldInfluence = 0;
 
-    if (dist < GRAVITY_RADIUS && dist > 1) {
+    if (effectStrength > 0 && dist < GRAVITY_RADIUS && dist > 1) {
       const angle = Math.atan2(dy, dx);
       const tangent = angle + Math.PI / 2;
       const normalized = dist / GRAVITY_RADIUS;
-      const pullStrength = Math.pow(1 - normalized, 2) * GRAVITY_STRENGTH;
-      const flowStrength = Math.pow(1 - normalized, 1.5);
+      const pullStrength =
+        Math.pow(1 - normalized, 2) * GRAVITY_STRENGTH * effectStrength;
+      const flowStrength = Math.pow(1 - normalized, 1.5) * effectStrength;
 
       char.fieldInfluence = flowStrength;
       char.vx -= Math.cos(angle) * pullStrength * 0.15;
@@ -683,18 +701,19 @@ export function mountPretextBlackHole(canvas, options = {}) {
       const tangentialForce = pullStrength * WARP_STRENGTH * (1 - normalized);
       char.vx += Math.cos(tangent) * tangentialForce * 0.08;
       char.vy += Math.sin(tangent) * tangentialForce * 0.08;
-      char.vx += holeVelocity.x * (0.18 + flowStrength * 0.72);
-      char.vy += holeVelocity.y * (0.18 + flowStrength * 0.72);
+      char.vx += holeVelocity.x * effectStrength * (0.18 + flowStrength * 0.72);
+      char.vy += holeVelocity.y * effectStrength * (0.18 + flowStrength * 0.72);
 
       if (dist < EVENT_HORIZON * 2.5) {
-        char.stretch = 1 + (1 - dist / (EVENT_HORIZON * 2.5)) * 2;
+        char.stretch =
+          1 + (1 - dist / (EVENT_HORIZON * 2.5)) * 2 * effectStrength;
         char.rotation = angle + Math.PI;
       } else {
         char.stretch = 1;
         char.rotation = 0;
       }
 
-      if (dist < SWALLOW_RADIUS && !char.absorbed) {
+      if (dist < SWALLOW_RADIUS * effectStrength && !char.absorbed) {
         char.absorbed = true;
       }
     } else {
@@ -703,15 +722,15 @@ export function mountPretextBlackHole(canvas, options = {}) {
     }
 
     if (char.absorbed) {
-      char.absorbProgress += 0.02;
+      char.absorbProgress += 0.02 * Math.max(effectStrength, 0.35);
       if (char.absorbProgress > 1) {
         char.absorbProgress = 1;
       }
       char.fieldInfluence = 1;
-      char.vx += (hole.x - char.x) * 0.08;
-      char.vy += (hole.y - char.y) * 0.08;
-      char.vx += holeVelocity.x * 0.95;
-      char.vy += holeVelocity.y * 0.95;
+      char.vx += (hole.x - char.x) * 0.08 * Math.max(effectStrength, 0.3);
+      char.vy += (hole.y - char.y) * 0.08 * Math.max(effectStrength, 0.3);
+      char.vx += holeVelocity.x * 0.95 * Math.max(effectStrength, 0.3);
+      char.vy += holeVelocity.y * 0.95 * Math.max(effectStrength, 0.3);
     }
 
     if (char.absorbed) {
@@ -728,7 +747,7 @@ export function mountPretextBlackHole(canvas, options = {}) {
     }
   }
 
-  function drawStars() {
+  function drawStars(effectStrength) {
     for (const star of stars) {
       const twinkle =
         Math.sin(time * star.twinkleSpeed + star.twinklePhase) * 0.25 + 0.75;
@@ -741,15 +760,20 @@ export function mountPretextBlackHole(canvas, options = {}) {
       let sy = star.y;
       let sizeMultiplier = 1;
 
-      if (dist < GRAVITY_RADIUS * 1.4 && dist > EVENT_HORIZON * 0.8) {
-        const lensStrength = 1 - dist / (GRAVITY_RADIUS * 1.4);
+      if (
+        effectStrength > 0 &&
+        dist < GRAVITY_RADIUS * 1.4 &&
+        dist > EVENT_HORIZON * 0.8
+      ) {
+        const lensStrength = (1 - dist / (GRAVITY_RADIUS * 1.4)) * effectStrength;
         const angle = Math.atan2(dy, dx);
         const tangent = angle + Math.PI / 2;
         sx += Math.cos(tangent) * lensStrength * 18;
         sy += Math.sin(tangent) * lensStrength * 18;
 
         if (dist < EVENT_HORIZON * 2.8) {
-          sizeMultiplier = 1 + (1 - dist / (EVENT_HORIZON * 2.8)) * 2.2;
+          sizeMultiplier =
+            1 + (1 - dist / (EVENT_HORIZON * 2.8)) * 2.2 * effectStrength;
         }
       }
 
@@ -792,7 +816,11 @@ export function mountPretextBlackHole(canvas, options = {}) {
     }
   }
 
-  function drawLensingRing() {
+  function drawLensingRing(opacity) {
+    if (opacity <= 0) {
+      return;
+    }
+
     const rings = [
       { radius: EVENT_HORIZON * 1.95, alpha: 0.05, width: 10, hue: 42 },
       { radius: EVENT_HORIZON * 2.7, alpha: 0.028, width: 14, hue: 260 },
@@ -811,7 +839,10 @@ export function mountPretextBlackHole(canvas, options = {}) {
         radius + ring.width,
       );
       gradient.addColorStop(0, `hsla(${ring.hue}, 60%, 72%, 0)`);
-      gradient.addColorStop(0.5, `hsla(${ring.hue}, 60%, 72%, ${ring.alpha})`);
+      gradient.addColorStop(
+        0.5,
+        `hsla(${ring.hue}, 60%, 72%, ${ring.alpha * opacity})`,
+      );
       gradient.addColorStop(1, `hsla(${ring.hue}, 60%, 72%, 0)`);
       ctx.fillStyle = gradient;
       ctx.fillRect(
@@ -823,7 +854,13 @@ export function mountPretextBlackHole(canvas, options = {}) {
     }
   }
 
-  function drawHoleCore() {
+  function drawHoleCore(opacity) {
+    if (opacity <= 0) {
+      return;
+    }
+
+    ctx.save();
+    ctx.globalAlpha = opacity;
     const coreGradient = ctx.createRadialGradient(
       hole.x,
       hole.y,
@@ -871,10 +908,16 @@ export function mountPretextBlackHole(canvas, options = {}) {
       EVENT_HORIZON * 3,
       EVENT_HORIZON * 3,
     );
+    ctx.restore();
   }
 
-  function drawCenterWord() {
+  function drawCenterWord(opacity) {
+    if (opacity <= 0) {
+      return;
+    }
+
     ctx.save();
+    ctx.globalAlpha = opacity;
     configureCenterWordContext();
     ctx.shadowColor = "rgba(255, 255, 255, 0.16)";
     ctx.shadowBlur = EVENT_HORIZON * 0.16;
@@ -883,7 +926,9 @@ export function mountPretextBlackHole(canvas, options = {}) {
     ctx.restore();
   }
 
-  function drawAccretionDisk() {
+  function drawAccretionDisk(opacity) {
+    ctx.save();
+    ctx.globalAlpha = opacity;
     const tiltY = 0.35;
     const glowSize = EVENT_HORIZON * 4.1;
     const outerGlow = ctx.createRadialGradient(
@@ -971,12 +1016,13 @@ export function mountPretextBlackHole(canvas, options = {}) {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    drawHoleCore();
-    drawCenterWord();
+    drawHoleCore(opacity);
+    drawCenterWord(opacity);
+    ctx.restore();
   }
 
-  function updateHawkingRadiation() {
-    if (Math.random() < 0.22) {
+  function updateHawkingRadiation(opacity) {
+    if (Math.random() < 0.22 * opacity) {
       const angle = Math.random() * Math.PI * 2;
       hawkingParticles.push({
         x: hole.x + Math.cos(angle) * EVENT_HORIZON * 1.05,
@@ -1004,15 +1050,37 @@ export function mountPretextBlackHole(canvas, options = {}) {
 
       ctx.beginPath();
       ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-      ctx.fillStyle = `hsla(${particle.hue}, 72%, 82%, ${particle.life * 0.34})`;
+      ctx.fillStyle = `hsla(${particle.hue}, 72%, 82%, ${particle.life * 0.34 * opacity})`;
       ctx.fill();
     }
   }
 
   function frame() {
     time += 0.016;
-    const targetX = mouse.active ? mouse.x : W / 2;
-    const targetY = mouse.active ? mouse.y : H / 2;
+    const textFade = smoothstepRange(
+      INTRO_TEXT_FADE_START,
+      INTRO_TEXT_FADE_END,
+      time,
+    );
+    const holeFade = smoothstepRange(
+      INTRO_HOLE_FADE_START,
+      INTRO_HOLE_FADE_END,
+      time,
+    );
+    const effectStrength = smoothstepRange(
+      INTRO_EFFECT_START,
+      INTRO_EFFECT_END,
+      time,
+    );
+    const pointerBlend = smoothstepRange(
+      INTRO_POINTER_START,
+      INTRO_POINTER_END,
+      time,
+    );
+    const mouseTargetX = mouse.active ? mouse.x : W / 2;
+    const mouseTargetY = mouse.active ? mouse.y : H / 2;
+    const targetX = W / 2 + (mouseTargetX - W / 2) * pointerBlend;
+    const targetY = H / 2 + (mouseTargetY - H / 2) * pointerBlend;
     const previousHoleX = hole.x;
     const previousHoleY = hole.y;
     hole.x += (targetX - hole.x) * DEFAULT_HOLE_FOLLOW;
@@ -1024,15 +1092,15 @@ export function mountPretextBlackHole(canvas, options = {}) {
     ctx.fillRect(0, 0, W, H);
 
     drawNebula();
-    drawStars();
-    drawLensingRing();
+    drawStars(effectStrength);
+    drawLensingRing(holeFade * effectStrength);
 
     configureTextContext();
 
     for (let i = 0; i < chars.length; i++) {
       const char = chars[i];
 
-      warpChar(char);
+      warpChar(char, effectStrength);
       const spring = 0.04 * (1 - char.fieldInfluence * 0.75);
       char.vx += (char.baseX - char.x) * spring;
       char.vy += (char.baseY - char.y) * spring;
@@ -1093,7 +1161,7 @@ export function mountPretextBlackHole(canvas, options = {}) {
         ctx.shadowBlur = Math.min(displacement * 0.18, 8);
       }
 
-      ctx.globalAlpha = alpha * (1 - char.absorbProgress);
+      ctx.globalAlpha = alpha * (1 - char.absorbProgress) * textFade;
       ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
       ctx.fillText(char.char, char.x, char.y);
       ctx.restore();
@@ -1102,8 +1170,8 @@ export function mountPretextBlackHole(canvas, options = {}) {
     ctx.globalAlpha = 1;
     ctx.shadowBlur = 0;
 
-    drawAccretionDisk();
-    updateHawkingRadiation();
+    drawAccretionDisk(holeFade);
+    updateHawkingRadiation(holeFade * effectStrength);
 
     const vignette = ctx.createRadialGradient(
       W / 2,
