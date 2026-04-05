@@ -33,6 +33,9 @@ const DEFAULT_ACCRETION_COLORS = [
 
 const DEFAULT_STAR_COUNT = 260;
 const DEFAULT_NEBULA_LAYERS = 4;
+const DEFAULT_ACCRETION_PARTICLE_COUNT = 120;
+const DEFAULT_ACCRETION_TRAIL_STEPS = 3;
+const DEFAULT_MAX_HAWKING_PARTICLES = 18;
 
 const DEFAULT_TEXT_CONTENT = `الرحمن الرحيم الملك القدوس السلام المؤمن المهيمن العزيز الجبار المتكبر الخالق البارئ المصور الغفار القهار الوهاب الرزاق الفتاح العليم القابض الباسط الخافض الرافع المعز المذل السميع البصير الحكم العدل اللطيف الخبير الحليم العظيم الغفور الشكور العلي الكبير الحفيظ المقيت الحسيب الجليل الكريم الرقيب المجيب الواسع الحكيم الودود المجيد الباعث الشهيد الحق الوكيل القوي المتين الولي الحميد المحصي المبدئ المعيد المحيي المميت الحي القيوم الواجد الماجد الواحد الصمد القادر المقتدر المقدم المؤخر الأول الآخر الظاهر الباطن الوالي المتعالي البر التواب المنتقم العفو الرؤوف مالك الملك ذو الجلال والإكرام المقسط الجامع الغني المغني المانع الضار النافع النور الهادي البديع الباقي الوارث الرشيد الصبور`;
 
@@ -403,6 +406,12 @@ export function mountPretextBlackHole(canvas, options = {}) {
   const ACCRETION_COLORS = options.accretionColors ?? DEFAULT_ACCRETION_COLORS;
   const STAR_COUNT = options.starCount ?? DEFAULT_STAR_COUNT;
   const NEBULA_LAYERS = options.nebulaLayers ?? DEFAULT_NEBULA_LAYERS;
+  const ACCRETION_PARTICLE_COUNT =
+    options.accretionParticleCount ?? DEFAULT_ACCRETION_PARTICLE_COUNT;
+  const ACCRETION_TRAIL_STEPS =
+    options.accretionTrailSteps ?? DEFAULT_ACCRETION_TRAIL_STEPS;
+  const MAX_HAWKING_PARTICLES =
+    options.maxHawkingParticles ?? DEFAULT_MAX_HAWKING_PARTICLES;
   const TEXT_WORDS = getTextWords(options.text ?? DEFAULT_TEXT_CONTENT);
   const words = TEXT_WORDS.length > 0 ? TEXT_WORDS : DEFAULT_WORDS;
 
@@ -418,6 +427,8 @@ export function mountPretextBlackHole(canvas, options = {}) {
   let stars = [];
   let accretionParticles = [];
   let hawkingParticles = [];
+  let backgroundLayerCanvas = null;
+  let vignetteLayerCanvas = null;
   const hole = { x: 0, y: 0 };
   const holeVelocity = { x: 0, y: 0 };
 
@@ -425,22 +436,55 @@ export function mountPretextBlackHole(canvas, options = {}) {
   const wordLayoutCache = new Map();
   const hasResizeObserver = typeof ResizeObserver === "function";
 
-  function configureTextContext() {
-    ctx.font = FONT;
-    ctx.textBaseline = "top";
-    ctx.textAlign = "left";
-    if ("direction" in ctx) {
-      ctx.direction = "rtl";
+  function configureTextContext(targetCtx = ctx) {
+    targetCtx.font = FONT;
+    targetCtx.textBaseline = "top";
+    targetCtx.textAlign = "left";
+    if ("direction" in targetCtx) {
+      targetCtx.direction = "rtl";
     }
   }
 
-  function configureCenterWordContext() {
-    ctx.font = `600 ${Math.round(EVENT_HORIZON * 0.82)}px "Noto Naskh Arabic", "Amiri", "Noto Sans Arabic", "Segoe UI", serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    if ("direction" in ctx) {
-      ctx.direction = "rtl";
+  function configureCenterWordContext(targetCtx = ctx) {
+    targetCtx.font = `600 ${Math.round(EVENT_HORIZON * 0.82)}px "Noto Naskh Arabic", "Amiri", "Noto Sans Arabic", "Segoe UI", serif`;
+    targetCtx.textAlign = "center";
+    targetCtx.textBaseline = "middle";
+    if ("direction" in targetCtx) {
+      targetCtx.direction = "rtl";
     }
+  }
+
+  function getEffectiveDpr(width, height) {
+    const capped = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+    const area = width * height;
+
+    if (area > 1_500_000) return Math.min(capped, 1);
+    if (area > 1_100_000) return Math.min(capped, 1.1);
+    if (area > 800_000) return Math.min(capped, 1.2);
+    return capped;
+  }
+
+  function getDensityScale() {
+    const area = W * H;
+
+    if (area > 1_500_000) return 0.68;
+    if (area > 1_100_000) return 0.78;
+    if (area > 800_000) return 0.88;
+    return 1;
+  }
+
+  function createBufferCanvas(width, height) {
+    const bufferCanvas = document.createElement("canvas");
+    bufferCanvas.width = Math.max(1, Math.round(width * dpr));
+    bufferCanvas.height = Math.max(1, Math.round(height * dpr));
+    const bufferCtx = bufferCanvas.getContext("2d");
+
+    if (bufferCtx === null) {
+      return null;
+    }
+
+    bufferCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { canvas: bufferCanvas, ctx: bufferCtx };
   }
 
   function updateHoleCenter() {
@@ -522,7 +566,8 @@ export function mountPretextBlackHole(canvas, options = {}) {
 
   function initStars() {
     stars = [];
-    for (let i = 0; i < STAR_COUNT; i++) {
+    const starCount = Math.max(120, Math.round(STAR_COUNT * getDensityScale()));
+    for (let i = 0; i < starCount; i++) {
       stars.push({
         x: Math.random() * W,
         y: Math.random() * H,
@@ -542,7 +587,11 @@ export function mountPretextBlackHole(canvas, options = {}) {
 
   function initAccretion() {
     accretionParticles = [];
-    for (let i = 0; i < 180; i++) {
+    const particleCount = Math.max(
+      72,
+      Math.round(ACCRETION_PARTICLE_COUNT * getDensityScale()),
+    );
+    for (let i = 0; i < particleCount; i++) {
       const angle = Math.random() * Math.PI * 2;
       const orbitRadius = EVENT_HORIZON + 18 + Math.random() * 104;
       accretionParticles.push({
@@ -664,7 +713,7 @@ export function mountPretextBlackHole(canvas, options = {}) {
     const bounds = getCanvasBounds();
     W = bounds.width;
     H = bounds.height;
-    dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
+    dpr = getEffectiveDpr(W, H);
     canvas.width = W * dpr;
     canvas.height = H * dpr;
     canvas.style.width = `${W}px`;
@@ -678,6 +727,8 @@ export function mountPretextBlackHole(canvas, options = {}) {
     initStars();
     initAccretion();
     buildLayout();
+    rebuildBackgroundLayer();
+    rebuildVignetteLayer();
   }
 
   function warpChar(char, effectStrength) {
@@ -765,7 +816,8 @@ export function mountPretextBlackHole(canvas, options = {}) {
         dist < GRAVITY_RADIUS * 1.4 &&
         dist > EVENT_HORIZON * 0.8
       ) {
-        const lensStrength = (1 - dist / (GRAVITY_RADIUS * 1.4)) * effectStrength;
+        const lensStrength =
+          (1 - dist / (GRAVITY_RADIUS * 1.4)) * effectStrength;
         const angle = Math.atan2(dy, dx);
         const tangent = angle + Math.PI / 2;
         sx += Math.cos(tangent) * lensStrength * 18;
@@ -793,14 +845,14 @@ export function mountPretextBlackHole(canvas, options = {}) {
     }
   }
 
-  function drawNebula() {
+  function drawNebula(targetCtx = ctx) {
     for (let i = 0; i < NEBULA_LAYERS; i++) {
       const centerX = W * (0.2 + i * 0.2);
       const centerY = H * (0.28 + (i % 2) * 0.42);
       const radius = W * (0.22 + i * 0.05);
       const hue = [258, 214, 304, 196][i];
 
-      const gradient = ctx.createRadialGradient(
+      const gradient = targetCtx.createRadialGradient(
         centerX,
         centerY,
         0,
@@ -811,9 +863,50 @@ export function mountPretextBlackHole(canvas, options = {}) {
       gradient.addColorStop(0, `hsla(${hue}, 60%, 16%, 0.045)`);
       gradient.addColorStop(0.55, `hsla(${hue}, 38%, 10%, 0.022)`);
       gradient.addColorStop(1, "hsla(0, 0%, 0%, 0)");
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, W, H);
+      targetCtx.fillStyle = gradient;
+      targetCtx.fillRect(0, 0, W, H);
     }
+  }
+
+  function drawVignette(targetCtx = ctx) {
+    const vignette = targetCtx.createRadialGradient(
+      W / 2,
+      H / 2,
+      W * 0.24,
+      W / 2,
+      H / 2,
+      W * 0.76,
+    );
+    vignette.addColorStop(0, "rgba(2, 1, 8, 0)");
+    vignette.addColorStop(1, "rgba(2, 1, 8, 0.72)");
+    targetCtx.fillStyle = vignette;
+    targetCtx.fillRect(0, 0, W, H);
+  }
+
+  function rebuildBackgroundLayer() {
+    const buffer = createBufferCanvas(W, H);
+
+    if (buffer === null) {
+      backgroundLayerCanvas = null;
+      return;
+    }
+
+    backgroundLayerCanvas = buffer.canvas;
+    buffer.ctx.fillStyle = BG_COLOR;
+    buffer.ctx.fillRect(0, 0, W, H);
+    drawNebula(buffer.ctx);
+  }
+
+  function rebuildVignetteLayer() {
+    const buffer = createBufferCanvas(W, H);
+
+    if (buffer === null) {
+      vignetteLayerCanvas = null;
+      return;
+    }
+
+    vignetteLayerCanvas = buffer.canvas;
+    drawVignette(buffer.ctx);
   }
 
   function drawLensingRing(opacity) {
@@ -869,9 +962,10 @@ export function mountPretextBlackHole(canvas, options = {}) {
       hole.y,
       EVENT_HORIZON * 1.1,
     );
-    coreGradient.addColorStop(0, "rgba(255, 255, 255, 0.98)");
-    coreGradient.addColorStop(0.36, "rgba(250, 248, 255, 0.96)");
-    coreGradient.addColorStop(0.74, "rgba(228, 235, 255, 0.76)");
+    coreGradient.addColorStop(0, "rgba(255, 255, 255, 0.34)");
+    coreGradient.addColorStop(0.24, "rgba(250, 248, 255, 0.46)");
+    coreGradient.addColorStop(0.58, "rgba(236, 242, 255, 0.72)");
+    coreGradient.addColorStop(0.82, "rgba(228, 235, 255, 0.5)");
     coreGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
 
     ctx.beginPath();
@@ -879,14 +973,17 @@ export function mountPretextBlackHole(canvas, options = {}) {
     ctx.fillStyle = coreGradient;
     ctx.fill();
 
-    ctx.save();
-    ctx.filter = "blur(14px)";
     ctx.beginPath();
     ctx.arc(hole.x, hole.y, EVENT_HORIZON * 0.92, 0, Math.PI * 2);
     ctx.strokeStyle = "rgba(244, 246, 255, 0.84)";
-    ctx.lineWidth = EVENT_HORIZON * 0.32;
+    ctx.lineWidth = EVENT_HORIZON * 0.18;
     ctx.stroke();
-    ctx.restore();
+
+    ctx.beginPath();
+    ctx.arc(hole.x, hole.y, EVENT_HORIZON * 1.08, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(232, 238, 255, 0.26)";
+    ctx.lineWidth = EVENT_HORIZON * 0.24;
+    ctx.stroke();
 
     const featherGradient = ctx.createRadialGradient(
       hole.x,
@@ -919,14 +1016,18 @@ export function mountPretextBlackHole(canvas, options = {}) {
     ctx.save();
     ctx.globalAlpha = opacity;
     configureCenterWordContext();
-    ctx.shadowColor = "rgba(255, 255, 255, 0.16)";
-    ctx.shadowBlur = EVENT_HORIZON * 0.16;
-    ctx.fillStyle = "rgba(24, 28, 42, 0.82)";
+    ctx.shadowColor = "rgba(255, 255, 255, 0.92)";
+    ctx.shadowBlur = EVENT_HORIZON * 0.3;
+    ctx.fillStyle = "rgba(255, 255, 255, 0.98)";
     ctx.fillText(HOLE_WORD, hole.x, hole.y + EVENT_HORIZON * 0.04);
     ctx.restore();
   }
 
   function drawAccretionDisk(opacity) {
+    if (opacity <= 0) {
+      return;
+    }
+
     ctx.save();
     ctx.globalAlpha = opacity;
     const tiltY = 0.35;
@@ -972,14 +1073,14 @@ export function mountPretextBlackHole(canvas, options = {}) {
       ctx.fillStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${alpha * dopplerBoost})`;
       ctx.fill();
 
-      for (let i = 1; i <= 5; i++) {
+      for (let i = 1; i <= ACCRETION_TRAIL_STEPS; i++) {
         const tailAngle = particle.angle - particle.speed * 0.016 * i * 3;
         const tx = hole.x + Math.cos(tailAngle) * particle.orbitRadius;
         const ty =
           hole.y +
           Math.sin(tailAngle) * particle.orbitRadius * tiltY +
           particle.z * 16;
-        const tailAlpha = alpha * (1 - i / 5) * 0.28;
+        const tailAlpha = alpha * (1 - i / ACCRETION_TRAIL_STEPS) * 0.28;
 
         ctx.beginPath();
         ctx.arc(tx, ty, particle.size * 0.58, 0, Math.PI * 2);
@@ -1022,7 +1123,10 @@ export function mountPretextBlackHole(canvas, options = {}) {
   }
 
   function updateHawkingRadiation(opacity) {
-    if (Math.random() < 0.22 * opacity) {
+    if (
+      hawkingParticles.length < MAX_HAWKING_PARTICLES &&
+      Math.random() < 0.14 * opacity
+    ) {
       const angle = Math.random() * Math.PI * 2;
       hawkingParticles.push({
         x: hole.x + Math.cos(angle) * EVENT_HORIZON * 1.05,
@@ -1088,10 +1192,14 @@ export function mountPretextBlackHole(canvas, options = {}) {
     holeVelocity.x = hole.x - previousHoleX;
     holeVelocity.y = hole.y - previousHoleY;
 
-    ctx.fillStyle = BG_COLOR;
-    ctx.fillRect(0, 0, W, H);
+    if (backgroundLayerCanvas !== null) {
+      ctx.drawImage(backgroundLayerCanvas, 0, 0, W, H);
+    } else {
+      ctx.fillStyle = BG_COLOR;
+      ctx.fillRect(0, 0, W, H);
+      drawNebula();
+    }
 
-    drawNebula();
     drawStars(effectStrength);
     drawLensingRing(holeFade * effectStrength);
 
@@ -1122,47 +1230,44 @@ export function mountPretextBlackHole(canvas, options = {}) {
         (charCenterX - hole.x) ** 2 + (charCenterY - hole.y) ** 2,
       );
 
-      let r = CHAR_COLOR[0];
-      let g = CHAR_COLOR[1];
-      let b = CHAR_COLOR[2];
-      let alpha = 0.62;
+      const distanceT = 1 - clamp(distToHole / (GRAVITY_RADIUS * 1.04), 0, 1);
+      const gray = Math.round(54 + Math.pow(distanceT, 1.35) * 196);
+      const alpha = Math.max(
+        0.34,
+        0.52 + distanceT * 0.34 - char.absorbProgress * 0.3,
+      );
+      const r = gray;
+      const g = gray;
+      const b = gray;
 
-      if (displacement > 0.5) {
-        const t = Math.min(displacement / 18, 1);
-        if (distToHole < GRAVITY_RADIUS * 0.52) {
-          r = Math.round(CHAR_COLOR[0] + (255 - CHAR_COLOR[0]) * t);
-          g = Math.round(CHAR_COLOR[1] + (166 - CHAR_COLOR[1]) * t);
-          b = Math.round(CHAR_COLOR[2] + (72 - CHAR_COLOR[2]) * t);
-        } else {
-          r = Math.round(
-            CHAR_COLOR[0] + (CHAR_GLOW_COLOR[0] - CHAR_COLOR[0]) * t,
-          );
-          g = Math.round(
-            CHAR_COLOR[1] + (CHAR_GLOW_COLOR[1] - CHAR_COLOR[1]) * t,
-          );
-          b = Math.round(
-            CHAR_COLOR[2] + (CHAR_GLOW_COLOR[2] - CHAR_COLOR[2]) * t,
-          );
-        }
-        alpha = Math.max(0.34, 0.9 - char.absorbProgress);
+      const finalAlpha = alpha * (1 - char.absorbProgress) * textFade;
+      const needsTransform = char.stretch > 1.03;
+      const needsGlow = displacement > 8 && distToHole < GRAVITY_RADIUS * 0.62;
+      const fillStyle = `rgb(${r}, ${g}, ${b})`;
+
+      if (!needsTransform && !needsGlow) {
+        ctx.globalAlpha = finalAlpha;
+        ctx.fillStyle = fillStyle;
+        ctx.fillText(char.char, char.x, char.y);
+        continue;
       }
 
       ctx.save();
 
-      if (char.stretch > 1.03) {
+      if (needsTransform) {
         ctx.translate(charCenterX, charCenterY);
         ctx.rotate(char.rotation);
         ctx.scale(char.stretch, 1 / Math.sqrt(char.stretch));
         ctx.translate(-charCenterX, -charCenterY);
       }
 
-      if (displacement > 8 && distToHole < GRAVITY_RADIUS * 0.62) {
+      if (needsGlow) {
         ctx.shadowColor = `rgba(${r}, ${g}, ${b}, 0.4)`;
         ctx.shadowBlur = Math.min(displacement * 0.18, 8);
       }
 
-      ctx.globalAlpha = alpha * (1 - char.absorbProgress) * textFade;
-      ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+      ctx.globalAlpha = finalAlpha;
+      ctx.fillStyle = fillStyle;
       ctx.fillText(char.char, char.x, char.y);
       ctx.restore();
     }
@@ -1173,18 +1278,11 @@ export function mountPretextBlackHole(canvas, options = {}) {
     drawAccretionDisk(holeFade);
     updateHawkingRadiation(holeFade * effectStrength);
 
-    const vignette = ctx.createRadialGradient(
-      W / 2,
-      H / 2,
-      W * 0.24,
-      W / 2,
-      H / 2,
-      W * 0.76,
-    );
-    vignette.addColorStop(0, "rgba(2, 1, 8, 0)");
-    vignette.addColorStop(1, "rgba(2, 1, 8, 0.72)");
-    ctx.fillStyle = vignette;
-    ctx.fillRect(0, 0, W, H);
+    if (vignetteLayerCanvas !== null) {
+      ctx.drawImage(vignetteLayerCanvas, 0, 0, W, H);
+    } else {
+      drawVignette();
+    }
 
     animationFrameId = requestAnimationFrame(frame);
   }
