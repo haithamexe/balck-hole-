@@ -622,6 +622,14 @@ export function mountPretextBlackHole(canvas, options = {}) {
         stretch: 1,
         rotation: 0,
         orbitPhaseOffset: chars.length * 0.37,
+        captured: false,
+        dead: false,
+        ttl: 0,
+        ttlMax: 0,
+        orbitAngle: 0,
+        orbitRadius: 0,
+        orbitSpeed: 0,
+        orbitTilt: 0.72,
       });
 
       cursorX = x;
@@ -643,6 +651,7 @@ export function mountPretextBlackHole(canvas, options = {}) {
       charStart,
       charEnd: chars.length,
       active: false,
+      consumed: false,
     });
 
     return cursorX;
@@ -810,37 +819,15 @@ export function mountPretextBlackHole(canvas, options = {}) {
         char.rotation = 0;
       }
 
-      if (dist < SWALLOW_RADIUS * effectStrength && !char.absorbed) {
+      const captureRadius =
+        Math.max(SWALLOW_RADIUS, GRAVITY_RADIUS * 0.58) *
+        (0.4 + effectStrength * 0.6);
+      if (dist < captureRadius && !char.absorbed) {
         char.absorbed = true;
       }
     } else {
       char.stretch = 1;
       char.rotation = 0;
-    }
-
-    if (char.absorbed) {
-      char.absorbProgress += 0.02 * Math.max(effectStrength, 0.35);
-      if (char.absorbProgress > 1) {
-        char.absorbProgress = 1;
-      }
-      char.fieldInfluence = 1;
-      char.vx += (hole.x - char.x) * 0.08 * Math.max(effectStrength, 0.3);
-      char.vy += (hole.y - char.y) * 0.08 * Math.max(effectStrength, 0.3);
-      char.vx += holeVelocity.x * 0.95 * Math.max(effectStrength, 0.3);
-      char.vy += holeVelocity.y * 0.95 * Math.max(effectStrength, 0.3);
-    }
-
-    if (char.absorbed) {
-      const currentDist = Math.sqrt(
-        (char.baseX - hole.x) ** 2 + (char.baseY - hole.y) ** 2,
-      );
-      if (currentDist > GRAVITY_RADIUS * 0.8) {
-        char.absorbProgress -= 0.03;
-        if (char.absorbProgress <= 0) {
-          char.absorbed = false;
-          char.absorbProgress = 0;
-        }
-      }
     }
   }
 
@@ -956,6 +943,121 @@ export function mountPretextBlackHole(canvas, options = {}) {
     return Math.max(0.34, 0.52 + distanceT * 0.34 - absorbProgress * 0.3);
   }
 
+  function captureChar(char, effectStrength) {
+    if (char.captured || char.dead) {
+      return;
+    }
+
+    const centerX = char.x + char.width / 2;
+    const centerY = char.y + LINE_HEIGHT / 2;
+    const dx = centerX - hole.x;
+    const dy = centerY - hole.y;
+    const baseAngle = Math.atan2(dy, dx);
+    const distToHole = Math.sqrt(dx * dx + dy * dy);
+    const orbitBias = Math.sin(char.orbitPhaseOffset * 1.37);
+
+    char.captured = true;
+    char.absorbed = true;
+    char.absorbProgress = 0;
+    char.ttlMax = 0.72 + (orbitBias * 0.5 + 0.5) * 0.52;
+    char.ttl = char.ttlMax;
+    char.orbitAngle = baseAngle;
+    char.orbitRadius = clamp(
+      EVENT_HORIZON * 1.22 + distToHole * 0.18,
+      EVENT_HORIZON * 1.18,
+      GRAVITY_RADIUS * 0.32,
+    );
+    char.orbitSpeed =
+      (0.024 + (Math.cos(char.orbitPhaseOffset * 0.91) * 0.5 + 0.5) * 0.018) *
+      (Math.sin(char.orbitPhaseOffset) >= 0 ? 1 : -1);
+    char.orbitTilt = 0.74;
+    char.vx *= 0.55;
+    char.vy *= 0.55;
+    char.fieldInfluence = 1;
+  }
+
+  function consumeWord(wordEntry, effectStrength) {
+    if (wordEntry.consumed) {
+      return;
+    }
+
+    wordEntry.consumed = true;
+    wordEntry.active = true;
+
+    for (let i = wordEntry.charStart; i < wordEntry.charEnd; i++) {
+      captureChar(chars[i], effectStrength);
+    }
+  }
+
+  function updateCapturedChar(char, effectStrength) {
+    if (!char.captured || char.dead) {
+      return;
+    }
+
+    const ttlStep = 0.016 * (1.05 + effectStrength * 0.3);
+    char.ttl -= ttlStep;
+
+    if (char.ttl <= 0) {
+      char.ttl = 0;
+      char.dead = true;
+      char.captured = false;
+      char.absorbProgress = 1;
+      char.fieldInfluence = 0;
+      return;
+    }
+
+    const centerX = char.x + char.width / 2;
+    const centerY = char.y + LINE_HEIGHT / 2;
+    const dx = centerX - hole.x;
+    const dy = centerY - hole.y;
+    const dist = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+    const angle = Math.atan2(dy, dx);
+    const tangent = angle + Math.PI / 2;
+    const loopStrength =
+      clamp((GRAVITY_RADIUS * 0.76 - dist) / (GRAVITY_RADIUS * 0.76), 0.16, 1) *
+      (0.72 + effectStrength * 0.28);
+    const loopPulse =
+      0.76 + Math.sin(time * 0.9 + char.orbitPhaseOffset) * 0.24;
+    const radialPulse = Math.sin(time * 1.18 + char.orbitPhaseOffset);
+    const lifeProgress =
+      1 - clamp(char.ttl / Math.max(0.001, char.ttlMax), 0, 1);
+    const targetRadius =
+      char.orbitRadius -
+      (char.orbitRadius - EVENT_HORIZON * 0.82) *
+        Math.pow(lifeProgress, 0.9);
+    const radiusCorrection = (dist - targetRadius) * 0.026 * loopStrength;
+    const tangentialForce =
+      GRAVITY_STRENGTH *
+      0.0048 *
+      loopStrength *
+      (0.82 + loopPulse) *
+      (1 - lifeProgress * 0.18);
+    const radialForce = GRAVITY_STRENGTH * 0.0018 * loopStrength * radialPulse;
+    const motionPull =
+      Math.hypot(holeVelocity.x, holeVelocity.y) *
+      (0.34 + loopStrength * 0.3 + lifeProgress * 0.18);
+
+    char.vx += Math.cos(tangent) * tangentialForce;
+    char.vy += Math.sin(tangent) * tangentialForce;
+    char.vx += Math.cos(angle) * radialForce;
+    char.vy += Math.sin(angle) * radialForce;
+    char.vx -= Math.cos(angle) * radiusCorrection;
+    char.vy -= Math.sin(angle) * radiusCorrection;
+    char.vx -= Math.cos(angle) * motionPull;
+    char.vy -= Math.sin(angle) * motionPull;
+    char.vx -= holeVelocity.x * 0.12;
+    char.vy -= holeVelocity.y * 0.12;
+    char.vx *= 0.965;
+    char.vy *= 0.965;
+    char.x += char.vx;
+    char.y += char.vy;
+    char.rotation = angle + Math.PI;
+    char.stretch = 1.05 + loopStrength * 0.14;
+    char.fieldInfluence = 1;
+    char.absorbProgress =
+      1 - clamp(char.ttl / Math.max(0.001, char.ttlMax * 0.22), 0, 1);
+  }
+
   function resetWordChars(wordEntry) {
     for (let i = wordEntry.charStart; i < wordEntry.charEnd; i++) {
       const char = chars[i];
@@ -968,6 +1070,10 @@ export function mountPretextBlackHole(canvas, options = {}) {
       char.fieldInfluence = 0;
       char.stretch = 1;
       char.rotation = 0;
+      char.captured = false;
+      char.dead = false;
+      char.ttl = 0;
+      char.ttlMax = 0;
     }
   }
 
@@ -975,6 +1081,7 @@ export function mountPretextBlackHole(canvas, options = {}) {
     for (let i = wordEntry.charStart; i < wordEntry.charEnd; i++) {
       const char = chars[i];
       if (
+        char.dead ||
         char.absorbProgress > 0.01 ||
         Math.abs(char.vx) > 0.03 ||
         Math.abs(char.vy) > 0.03 ||
@@ -988,7 +1095,22 @@ export function mountPretextBlackHole(canvas, options = {}) {
     return true;
   }
 
+  function hasVisibleChars(wordEntry) {
+    for (let i = wordEntry.charStart; i < wordEntry.charEnd; i++) {
+      if (!chars[i].dead) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   function updateWordActivity(wordEntry) {
+    if (wordEntry.consumed) {
+      wordEntry.active = hasVisibleChars(wordEntry);
+      return;
+    }
+
     const dx = wordEntry.centerX - hole.x;
     const dy = wordEntry.centerY - hole.y;
     const distSq = dx * dx + dy * dy;
@@ -1323,7 +1445,7 @@ export function mountPretextBlackHole(canvas, options = {}) {
     configureWordContext();
     for (let i = 0; i < wordEntries.length; i++) {
       const wordEntry = wordEntries[i];
-      if (!wordEntry.active) {
+      if (!wordEntry.active && !wordEntry.consumed) {
         drawStaticWord(wordEntry, textFade);
       }
     }
@@ -1338,18 +1460,33 @@ export function mountPretextBlackHole(canvas, options = {}) {
 
       for (let i = wordEntry.charStart; i < wordEntry.charEnd; i++) {
         const char = chars[i];
+        if (char.dead) {
+          continue;
+        }
 
-        warpChar(char, effectStrength);
-        const spring = 0.04 * (1 - char.fieldInfluence * 0.75);
-        char.vx += (char.baseX - char.x) * spring;
-        char.vy += (char.baseY - char.y) * spring;
-        const damping = 0.9 + char.fieldInfluence * 0.045;
-        char.vx *= damping;
-        char.vy *= damping;
-        char.x += char.vx;
-        char.y += char.vy;
+        if (char.captured) {
+          updateCapturedChar(char, effectStrength);
+        } else {
+          warpChar(char, effectStrength);
 
-        if (char.absorbProgress >= 1) {
+          if (!wordEntry.consumed && char.absorbed) {
+            consumeWord(wordEntry, effectStrength);
+            updateCapturedChar(char, effectStrength);
+          }
+        }
+
+        if (!char.captured) {
+          const spring = 0.04 * (1 - char.fieldInfluence * 0.75);
+          char.vx += (char.baseX - char.x) * spring;
+          char.vy += (char.baseY - char.y) * spring;
+          const damping = 0.9 + char.fieldInfluence * 0.045;
+          char.vx *= damping;
+          char.vy *= damping;
+          char.x += char.vx;
+          char.y += char.vy;
+        }
+
+        if (char.dead) {
           continue;
         }
 
